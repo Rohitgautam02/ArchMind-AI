@@ -1,0 +1,9 @@
+{
+  "name": "sample-repo",
+  "version": "1.0.0",
+  "description": "A sample repository for ArchMind AI testing",
+  "main": "src/index.js",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

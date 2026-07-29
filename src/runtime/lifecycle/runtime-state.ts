@@ -1,0 +1,9 @@
+export enum RuntimeState {
+  BOOTING = 'BOOTING',
+  INITIALIZING = 'INITIALIZING',
+  READY = 'READY',
+  RUNNING = 'RUNNING',
+  STOPPING = 'STOPPING',
+  STOPPED = 'STOPPED',
+  FAILED = 'FAILED',
+}
