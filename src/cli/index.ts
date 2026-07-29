@@ -25,6 +25,12 @@ import { StructuredLogger } from '../runtime/logging/structured-logger.js';
 import { architectureAgentDefinition } from '../runtime/agents/architecture-agent-definition.js';
 import { ReportGenerator } from '../runtime/reporting/report-generator.js';
 import { LifecycleManager } from '../runtime/lifecycle/lifecycle-manager.js';
+import { RepositoryScanner } from '../runtime/extractors/repository-scanner.js';
+import { PackageJsonExtractor } from '../runtime/extractors/package-json-extractor.js';
+import { TsConfigExtractor } from '../runtime/extractors/tsconfig-extractor.js';
+import { DockerfileExtractor } from '../runtime/extractors/dockerfile-extractor.js';
+import { ReadmeExtractor } from '../runtime/extractors/readme-extractor.js';
+import { TypeScriptAstExtractor } from '../runtime/extractors/typescript-ast-extractor.js';
 
 async function main() {
   const { values, positionals } = parseArgs({
@@ -107,26 +113,19 @@ async function main() {
 
     kernel.boot();
 
-    // In a full implementation, a MetadataExtractor would run here.
-    // We will manually inject the repository metadata node for now to trigger the ArchitectureAgent.
+    const scanner = new RepositoryScanner();
+    scanner.register(new PackageJsonExtractor());
+    scanner.register(new TsConfigExtractor());
+    scanner.register(new DockerfileExtractor());
+    scanner.register(new ReadmeExtractor());
+    scanner.register(new TypeScriptAstExtractor());
+
+    console.log(`Scanning repository at ${targetPath}...`);
+    const scanResults = await scanner.scan(targetPath, 'system');
+    
     evidenceGraph.apply({
-      provenance: {
-        sourceType: 'metadata',
-        sourceId: 'cli',
-        sourceVersion: '0.1.0',
-        createdAt: new Date().toISOString(),
-        runId: 'system',
-        external: false,
-      },
-      nodes: [
-        {
-          id: 'repo-1',
-          kind: 'metadata:repository',
-          label: targetPath,
-          confidence: { score: 1.0, source: 'tool' },
-          provenance: [],
-        }
-      ]
+      provenance: scanResults.provenance,
+      nodes: scanResults.nodes,
     });
 
     // We manually resume the run because createRun doesn't start it, and orchestrator creates a new run inside execute().

@@ -70,6 +70,13 @@ You can customize the runtime by placing an `archmind.config.json` in your curre
 
 ArchMind AI strictly follows a deterministic execution pipeline:
 
+1. **Deterministic Extraction**: The `RepositoryIntelligenceEngine` scans the local filesystem, executing tools like `TypeScriptAstExtractor`, `PackageJsonExtractor`, and `DockerfileExtractor` to populate the Evidence Graph with unassailable facts.
+2. **Planning**: The `PlannerRuntime` determines which agents to run based on the available deterministic evidence.
+3. **Execution**: The `RuntimeOrchestrator` runs agents via the `AgentRuntime`.
+4. **Validation**: Agent outputs are strictly parsed via Zod.
+5. **Review**: The `ReviewerRuntime` verifies the generated Evidence Graph.
+6. **Reporting**: The `ReportGenerator` creates a human-readable markdown file.
+
 ### 1. Runtime Pipeline
 ```mermaid
 flowchart TD
