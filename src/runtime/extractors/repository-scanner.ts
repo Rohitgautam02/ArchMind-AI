@@ -1,4 +1,4 @@
-import type { EvidenceNode, Provenance } from '../contracts.js';
+import type { EvidenceNode, EvidenceEdge, Provenance } from '../contracts.js';
 import type { Extractor, ExtractorContext } from './extractor-contract.js';
 
 export class RepositoryScanner {
@@ -8,9 +8,10 @@ export class RepositoryScanner {
     this.#extractors.push(extractor);
   }
 
-  async scan(targetPath: string, runId: string): Promise<{ provenance: Provenance; nodes: EvidenceNode[] }> {
+  async scan(targetPath: string, runId: string): Promise<{ provenance: Provenance; nodes: EvidenceNode[], edges: EvidenceEdge[] }> {
     const context: ExtractorContext = { targetPath, runId };
     const nodes: EvidenceNode[] = [];
+    const edges: EvidenceEdge[] = [];
     
     const scanProvenance: Provenance = {
       sourceType: 'metadata',
@@ -30,12 +31,13 @@ export class RepositoryScanner {
       } catch (error) {
         console.warn(`Extractor ${extractor.id} failed:`, error);
       }
-      return [];
+      return { nodes: [], edges: [] };
     });
 
     const resultsArray = await Promise.all(runPromises);
     for (const results of resultsArray) {
-      nodes.push(...results);
+      nodes.push(...results.nodes);
+      edges.push(...results.edges);
     }
     
     // Add a base repository node to anchor the analysis
@@ -52,6 +54,7 @@ export class RepositoryScanner {
     return {
       provenance: scanProvenance,
       nodes,
+      edges,
     };
   }
 }

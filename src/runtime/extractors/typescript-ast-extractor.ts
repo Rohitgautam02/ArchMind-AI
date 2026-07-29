@@ -1,8 +1,8 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import ts from 'typescript';
-import type { Extractor, ExtractorContext } from './extractor-contract.js';
-import type { EvidenceNode, Provenance } from '../contracts.js';
+import type { Extractor, ExtractorContext, ExtractorResult } from './extractor-contract.js';
+import type { EvidenceNode, EvidenceEdge, Provenance } from '../contracts.js';
 
 export class TypeScriptAstExtractor implements Extractor {
   readonly id = 'TypeScriptAstExtractor';
@@ -17,14 +17,20 @@ export class TypeScriptAstExtractor implements Extractor {
     }
   }
 
-  async extract(context: ExtractorContext): Promise<EvidenceNode[]> {
+  async extract(context: ExtractorContext): Promise<ExtractorResult> {
     const srcPath = path.join(context.targetPath, 'src');
     const files = await this.#findTsFiles(srcPath);
     
-    const classes: string[] = [];
-    const interfaces: string[] = [];
-    const functions: string[] = [];
-    const imports: string[] = [];
+    const nodes: EvidenceNode[] = [];
+    const edges: EvidenceEdge[] = [];
+
+    const provenance: Provenance = {
+      sourceType: 'metadata',
+      sourceId: this.id,
+      createdAt: new Date().toISOString(),
+      runId: context.runId,
+      external: false,
+    };
 
     for (const file of files) {
       const content = await fs.readFile(file, 'utf8');
@@ -35,16 +41,86 @@ export class TypeScriptAstExtractor implements Extractor {
         true
       );
 
+      const relativePath = path.relative(context.targetPath, file);
+      const fileNodeId = `${context.runId}:file:${relativePath}`;
+      
+      nodes.push(Object.freeze({
+        id: fileNodeId,
+        kind: 'ast:file',
+        label: relativePath,
+        confidence: { score: 1.0, source: 'tool' as const, rationale: 'File exists' },
+        provenance: Object.freeze([provenance]),
+      }));
+
       const visit = (node: ts.Node) => {
         if (ts.isClassDeclaration(node) && node.name) {
-          classes.push(node.name.text);
-        } else if (ts.isInterfaceDeclaration(node) && node.name) {
-          interfaces.push(node.name.text);
-        } else if (ts.isFunctionDeclaration(node) && node.name) {
-          functions.push(node.name.text);
+          const className = node.name.text;
+          const classNodeId = `${context.runId}:class:${className}`;
+          
+          if (!nodes.some(n => n.id === classNodeId)) {
+            nodes.push(Object.freeze({
+              id: classNodeId,
+              kind: 'ast:class',
+              label: className,
+              confidence: { score: 1.0, source: 'tool' as const, rationale: 'Parsed from AST' },
+              provenance: Object.freeze([provenance]),
+            }));
+          }
+
+          edges.push(Object.freeze({
+            id: `${context.runId}:contains:${relativePath}:${className}`,
+            from: fileNodeId,
+            to: classNodeId,
+            relation: 'contains',
+            confidence: { score: 1.0, source: 'tool' as const, rationale: 'Class declared in file' },
+            provenance: Object.freeze([provenance]),
+          }));
+
+          // Check for extends
+          if (node.heritageClauses) {
+            for (const clause of node.heritageClauses) {
+              if (clause.token === ts.SyntaxKind.ExtendsKeyword) {
+                for (const type of clause.types) {
+                  if (ts.isIdentifier(type.expression)) {
+                    const baseClassName = type.expression.text;
+                    const baseClassNodeId = `${context.runId}:class:${baseClassName}`;
+                    
+                    edges.push(Object.freeze({
+                      id: `${context.runId}:extends:${className}:${baseClassName}`,
+                      from: classNodeId,
+                      to: baseClassNodeId,
+                      relation: 'extends',
+                      confidence: { score: 1.0, source: 'tool' as const, rationale: 'Extends keyword found' },
+                      provenance: Object.freeze([provenance]),
+                    }));
+                  }
+                }
+              }
+            }
+          }
         } else if (ts.isImportDeclaration(node)) {
           if (ts.isStringLiteral(node.moduleSpecifier)) {
-            imports.push(node.moduleSpecifier.text);
+            const moduleName = node.moduleSpecifier.text;
+            const moduleNodeId = `${context.runId}:module:${moduleName}`;
+            
+            if (!nodes.some(n => n.id === moduleNodeId)) {
+              nodes.push(Object.freeze({
+                id: moduleNodeId,
+                kind: 'ast:module',
+                label: moduleName,
+                confidence: { score: 1.0, source: 'tool' as const, rationale: 'Parsed from AST import' },
+                provenance: Object.freeze([provenance]),
+              }));
+            }
+
+            edges.push(Object.freeze({
+              id: `${context.runId}:imports:${relativePath}:${moduleName}`,
+              from: fileNodeId,
+              to: moduleNodeId,
+              relation: 'imports',
+              confidence: { score: 1.0, source: 'tool' as const, rationale: 'Import declaration found' },
+              provenance: Object.freeze([provenance]),
+            }));
           }
         }
         ts.forEachChild(node, visit);
@@ -53,29 +129,10 @@ export class TypeScriptAstExtractor implements Extractor {
       visit(sourceFile);
     }
 
-    const provenance: Provenance = {
-      sourceType: 'metadata',
-      sourceId: this.id,
-      createdAt: new Date().toISOString(),
-      runId: context.runId,
-      external: false,
+    return {
+      nodes,
+      edges,
     };
-
-    return [
-      Object.freeze({
-        id: `${context.runId}:ast:typescript`,
-        kind: 'ast:typescript',
-        label: 'TypeScript AST Analysis',
-        value: {
-          classes: Array.from(new Set(classes)),
-          interfaces: Array.from(new Set(interfaces)),
-          functions: Array.from(new Set(functions)),
-          imports: Array.from(new Set(imports)),
-        },
-        confidence: { score: 1.0, source: 'tool' as const, rationale: 'Parsed directly from TypeScript AST' },
-        provenance: Object.freeze([provenance]),
-      })
-    ];
   }
 
   async #findTsFiles(dir: string): Promise<string[]> {

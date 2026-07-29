@@ -148,9 +148,11 @@ flowchart TD
 
 ## Roadmap
 
-- **v0.1**: Initial CLI, Config Loader, and Reporting Engine.
-- **v0.2**: Specialized Agents (Security, DevOps, Documentation, Dependencies).
-- **v1.0**: Full repository analysis capability.
+- **v0.2** — Real Repository Intelligence ✅
+- **v0.3** — Semantic Evidence Graph
+- **v0.4** — Intelligent Planner
+- **v0.5** — Specialized Analysis Agents
+- **v1.0** — Production-ready Repository Intelligence Platform
 
 ## Contributing
 

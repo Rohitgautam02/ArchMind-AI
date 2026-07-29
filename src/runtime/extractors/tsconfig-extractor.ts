@@ -16,7 +16,7 @@ export class TsConfigExtractor implements Extractor {
     }
   }
 
-  async extract(context: ExtractorContext): Promise<EvidenceNode[]> {
+  async extract(context: ExtractorContext): Promise<ExtractorResult> {
     const tsconfigPath = path.join(context.targetPath, 'tsconfig.json');
     let content = await fs.readFile(tsconfigPath, 'utf8');
     
@@ -40,19 +40,22 @@ export class TsConfigExtractor implements Extractor {
       external: false,
     };
 
-    return [
-      Object.freeze({
-        id: `${context.runId}:tsconfig`,
-        kind: 'metadata:tsconfig',
-        label: 'tsconfig.json',
-        value: {
-          compilerOptions: config.compilerOptions ?? {},
-          include: config.include ?? [],
-          exclude: config.exclude ?? [],
-        },
-        confidence: { score: 1.0, source: 'tool' as const, rationale: 'Parsed directly from tsconfig.json' },
-        provenance: Object.freeze([provenance]),
-      })
-    ];
+    return {
+      nodes: [
+        Object.freeze({
+          id: `${context.runId}:tsconfig`,
+          kind: 'metadata:tsconfig',
+          label: 'tsconfig.json',
+          value: {
+            compilerOptions: config.compilerOptions ?? {},
+            include: config.include ?? [],
+            exclude: config.exclude ?? [],
+          },
+          confidence: { score: 1.0, source: 'tool' as const, rationale: 'Parsed directly from tsconfig.json' },
+          provenance: Object.freeze([provenance]),
+        })
+      ],
+      edges: []
+    };
   }
 }

@@ -31,6 +31,8 @@ import { TsConfigExtractor } from '../runtime/extractors/tsconfig-extractor.js';
 import { DockerfileExtractor } from '../runtime/extractors/dockerfile-extractor.js';
 import { ReadmeExtractor } from '../runtime/extractors/readme-extractor.js';
 import { TypeScriptAstExtractor } from '../runtime/extractors/typescript-ast-extractor.js';
+import { FrameworkDetector } from '../runtime/extractors/framework-detector.js';
+import { ArchitectureDetector } from '../runtime/extractors/architecture-detector.js';
 
 async function main() {
   const { values, positionals } = parseArgs({
@@ -119,6 +121,8 @@ async function main() {
     scanner.register(new DockerfileExtractor());
     scanner.register(new ReadmeExtractor());
     scanner.register(new TypeScriptAstExtractor());
+    scanner.register(new FrameworkDetector());
+    scanner.register(new ArchitectureDetector());
 
     console.log(`Scanning repository at ${targetPath}...`);
     const scanResults = await scanner.scan(targetPath, 'system');

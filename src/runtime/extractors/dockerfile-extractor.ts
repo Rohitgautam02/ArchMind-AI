@@ -16,7 +16,7 @@ export class DockerfileExtractor implements Extractor {
     }
   }
 
-  async extract(context: ExtractorContext): Promise<EvidenceNode[]> {
+  async extract(context: ExtractorContext): Promise<ExtractorResult> {
     const dockerfilePath = path.join(context.targetPath, 'Dockerfile');
     const content = await fs.readFile(dockerfilePath, 'utf8');
     
@@ -51,19 +51,22 @@ export class DockerfileExtractor implements Extractor {
       external: false,
     };
 
-    return [
-      Object.freeze({
-        id: `${context.runId}:dockerfile`,
-        kind: 'metadata:dockerfile',
-        label: 'Dockerfile',
-        value: {
-          baseImages,
-          exposedPorts,
-          buildStages,
-        },
-        confidence: { score: 1.0, source: 'tool' as const, rationale: 'Parsed directly from Dockerfile' },
-        provenance: Object.freeze([provenance]),
-      })
-    ];
+    return {
+      nodes: [
+        Object.freeze({
+          id: `${context.runId}:dockerfile`,
+          kind: 'metadata:dockerfile',
+          label: 'Dockerfile',
+          value: {
+            baseImages,
+            exposedPorts,
+            buildStages,
+          },
+          confidence: { score: 1.0, source: 'tool' as const, rationale: 'Parsed directly from Dockerfile' },
+          provenance: Object.freeze([provenance]),
+        })
+      ],
+      edges: []
+    };
   }
 }

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-29
+
+### Semantic Evidence Graph
+
+This milestone transforms the Evidence Graph from a flat collection of metadata into a deeply connected semantic topology, allowing downstream reasoning to traverse dependencies and structural heuristics.
+
+### Added
+- **Graph Edges**: Extractor contracts now emit `EvidenceEdge` objects alongside nodes, creating relational pathways.
+- **Topological AST Graphing**: The `TypeScriptAstExtractor` now emits distinct nodes for Files, Classes, and Modules, connected via `contains`, `imports`, and `extends` edges.
+- **FrameworkDetector**: A deterministic heuristic engine that infers the technology stack (e.g., React, Express, Vue) with 100% confidence prior to AI reasoning.
+- **ArchitectureDetector**: A structural heuristic engine that identifies design patterns (e.g., Layered Architecture, DDD) based on repository topology.
+
 ## [0.2.0] - 2026-07-29
 
 ### Real Repository Intelligence

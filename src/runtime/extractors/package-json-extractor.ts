@@ -16,7 +16,7 @@ export class PackageJsonExtractor implements Extractor {
     }
   }
 
-  async extract(context: ExtractorContext): Promise<EvidenceNode[]> {
+  async extract(context: ExtractorContext): Promise<ExtractorResult> {
     const packagePath = path.join(context.targetPath, 'package.json');
     const content = await fs.readFile(packagePath, 'utf8');
     const pkg = JSON.parse(content);
@@ -29,23 +29,26 @@ export class PackageJsonExtractor implements Extractor {
       external: false,
     };
 
-    return [
-      Object.freeze({
-        id: `${context.runId}:package-json`,
-        kind: 'metadata:package-json',
-        label: 'package.json',
-        value: {
-          name: pkg.name,
-          version: pkg.version,
-          dependencies: pkg.dependencies ?? {},
-          devDependencies: pkg.devDependencies ?? {},
-          scripts: pkg.scripts ?? {},
-          engines: pkg.engines ?? {},
-          workspaces: pkg.workspaces ?? [],
-        },
-        confidence: { score: 1.0, source: 'tool' as const, rationale: 'Parsed directly from package.json' },
-        provenance: Object.freeze([provenance]),
-      })
-    ];
+    return {
+      nodes: [
+        Object.freeze({
+          id: `${context.runId}:package-json`,
+          kind: 'metadata:package-json',
+          label: 'package.json',
+          value: {
+            name: pkg.name,
+            version: pkg.version,
+            dependencies: pkg.dependencies ?? {},
+            devDependencies: pkg.devDependencies ?? {},
+            scripts: pkg.scripts ?? {},
+            engines: pkg.engines ?? {},
+            workspaces: pkg.workspaces ?? [],
+          },
+          confidence: { score: 1.0, source: 'tool' as const, rationale: 'Parsed directly from package.json' },
+          provenance: Object.freeze([provenance]),
+        })
+      ],
+      edges: []
+    };
   }
 }
