@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-07-29
+
+### Architecture Stabilization
+
+This milestone refines the architecture, strictly separating policy from mechanism and introducing deep evidence provenance to mathematically derive reasoning confidence.
+
+### Added
+- **The Planning Triad**: Decoupled the monolithic `PlannerRuntime` into `PlannerRuntime` (Policy), `CapabilityResolver` (Resolution), and `ExecutionScheduler` (Mechanism).
+- **CapabilityResolver SemVer**: Resolves concrete capabilities by parsing semantic versions instead of simple locale comparisons.
+- **Recursive Provenance**: The `Provenance` schema now tracks `supportingEvidenceIds`.
+- **Confidence Engine**: Dynamically calculates the derived confidence of high-level evidence nodes based on the scores of the supporting deterministic nodes.
+
+### Changed
+- **CLI Lifecycle**: Unified the pipeline into a single, cohesive RunManager lifecycle traversing extraction, planning, reasoning, and review.
+
+## [0.4.0] - 2026-07-29
+
+### Evidence-Aware Planning Engine
+
+This milestone transforms the platform into an active reasoning engine.
+
+### Added
+- **Graph Query API**: Exposed topological queries (`findByKind`, `findByRelation`, `findIncoming`, etc.).
+- **Declarative Planner Rules**: Capabilities now specify Required vs Produced evidence.
+- **Graph-Aware Reviewer**: The Reviewer now actively checks AI assertions against deterministic graph truths.
+
 ## [0.3.0] - 2026-07-29
 
 ### Semantic Evidence Graph

@@ -149,9 +149,14 @@ flowchart TD
 ## Roadmap
 
 - **v0.2** — Real Repository Intelligence ✅
-- **v0.3** — Semantic Evidence Graph
-- **v0.4** — Intelligent Planner
-- **v0.5** — Specialized Analysis Agents
+- **v0.3** — Semantic Evidence Graph ✅
+- **v0.4** — Evidence-Aware Planning Engine ✅
+- **v0.4.1** — Architecture Stabilization ✅
+- **v0.5** — Dependency Analysis Agent
+- **v0.6** — Security Agent
+- **v0.7** — DevOps Agent
+- **v0.8** — Documentation Agent
+- **v0.9** — Cross-Agent Knowledge Graph
 - **v1.0** — Production-ready Repository Intelligence Platform
 
 ## Contributing

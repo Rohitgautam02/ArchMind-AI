@@ -63,9 +63,13 @@ export class RuntimeOrchestrator {
   }
 
   /** Execute a single deterministic runtime pass from planning through review. */
-  async execute(): Promise<RuntimePipelineResult> {
-    const { runId } = this.#runManager.createRun();
-    this.#runManager.resumeRun(runId);
+  async execute(existingRunId?: string): Promise<RuntimePipelineResult> {
+    let runId = existingRunId;
+    if (!runId) {
+      const run = this.#runManager.createRun();
+      runId = run.runId;
+      this.#runManager.resumeRun(runId);
+    }
 
     const plannerResult = this.#plannerRuntime.plan({
       metadata: this.#metadata(runId),

@@ -112,8 +112,10 @@ async function main() {
     const kernel = new RuntimeKernel({
       lifecycleManager,
     });
-
     kernel.boot();
+
+    const { runId } = runManager.createRun();
+    runManager.resumeRun(runId);
 
     const scanner = new RepositoryScanner();
     scanner.register(new PackageJsonExtractor());
@@ -125,27 +127,17 @@ async function main() {
     scanner.register(new ArchitectureDetector());
 
     console.log(`Scanning repository at ${targetPath}...`);
-    const scanResults = await scanner.scan(targetPath, 'system');
+    const scanResults = await scanner.scan(targetPath, runId);
     
     evidenceGraph.apply({
       provenance: scanResults.provenance,
       nodes: scanResults.nodes,
+      edges: scanResults.edges,
     });
 
-    // We manually resume the run because createRun doesn't start it, and orchestrator creates a new run inside execute().
-    // Wait, RuntimeOrchestrator.execute() creates a new run internally!
-    // So we shouldn't create a run above, we need to pass the repo data into the orchestrator or graph directly and let orchestrator pick it up.
-    // Actually, orchestrator in execute() currently does:
-    // const { runId } = this.#runManager.createRun();
-    // this.#runManager.resumeRun(runId);
-    // So we need to inject the repository node during the run, or change the orchestrator to take a runId.
-    // Let's modify orchestrator to take a workspace context or pre-populate the graph.
-    // For this CLI script, we will just patch the orchestrator's #metadata function if needed, or better, 
-    // we'll run orchestrator.execute() and since planner looks at the whole evidence graph, we just need the repo node in there globally (runId doesn't matter for the initial node if it's attached to the system run).
-    
-    // We will let execute() run.
-    console.log(`Starting analysis on ${targetPath}...`);
-    const result = await orchestrator.execute();
+    console.log('Graph populated. Executing RuntimeOrchestrator...');
+
+    const result = await orchestrator.execute(runId);
 
     console.log('Analysis complete. Generating report...');
     const output = values.output as string;

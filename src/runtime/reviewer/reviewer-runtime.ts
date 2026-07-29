@@ -95,6 +95,28 @@ export class ReviewerRuntime {
       return ReviewDecision.REANALYSIS_REQUIRED;
     }
 
+    // Graph-Aware Validation for ArchitectureAgent
+    if (result.capability === 'ArchitectureAgent') {
+      const generatedNodes = result.generatedEvidenceIds
+        .map(id => this.#evidenceGraph.getNode(id))
+        .filter(n => n !== undefined);
+
+      const architectureNode = generatedNodes.find(n => n?.label === 'ArchitectureDetected');
+      if (architectureNode && architectureNode.value) {
+        const arch = (architectureNode.value as any).architecture?.toLowerCase();
+        
+        // Example Graph-Aware Check:
+        // If it claims MVC but there are no backend framework controllers, reject.
+        if (arch === 'mvc' || arch === 'layered') {
+          const hasControllers = this.#evidenceGraph.findByKind('architecture:pattern').some(n => n.label === 'Layered Architecture');
+          const hasExpress = this.#evidenceGraph.findByKind('framework:backend').some(n => n.label === 'Express');
+          if (!hasControllers && !hasExpress) {
+            return ReviewDecision.REJECTED;
+          }
+        }
+      }
+    }
+
     return ReviewDecision.APPROVED;
   }
 

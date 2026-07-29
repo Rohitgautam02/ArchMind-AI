@@ -80,6 +80,32 @@ export class EvidenceGraph {
     }
   }
 
+  // Graph Query API
+
+  findByKind(kind: string): EvidenceNode[] {
+    return this.listNodes().filter((n) => n.kind === kind || n.kind.startsWith(`${kind}:`));
+  }
+
+  findByRelation(relation: string): EvidenceEdge[] {
+    return this.listEdges().filter((e) => e.relation === relation);
+  }
+
+  findIncoming(nodeId: string, relation?: string): EvidenceEdge[] {
+    return this.listEdges().filter((e) => e.to === nodeId && (!relation || e.relation === relation));
+  }
+
+  findOutgoing(nodeId: string, relation?: string): EvidenceEdge[] {
+    return this.listEdges().filter((e) => e.from === nodeId && (!relation || e.relation === relation));
+  }
+
+  findNeighbours(nodeId: string, relation?: string): EvidenceNode[] {
+    const outgoingIds = this.findOutgoing(nodeId, relation).map((e) => e.to);
+    const incomingIds = this.findIncoming(nodeId, relation).map((e) => e.from);
+    const neighbourIds = new Set([...outgoingIds, ...incomingIds]);
+
+    return this.listNodes().filter((n) => neighbourIds.has(n.id));
+  }
+
   getNode(id: string): EvidenceNode | undefined {
     const node = this.#nodes.get(id);
     return node ? this.#clone(node) : undefined;

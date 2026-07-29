@@ -33,6 +33,7 @@ export interface Provenance {
   readonly createdAt: string;
   readonly runId: string;
   readonly external: boolean;
+  readonly supportingEvidenceIds?: readonly string[];
 }
 
 export interface EvidenceNode {

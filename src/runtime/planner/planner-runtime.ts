@@ -1,11 +1,14 @@
 import type { RuntimeMetadata } from '../contracts.js';
 import type { EventBus } from '../events/event-bus.js';
-import type { RuntimeEvent } from '../events/runtime-event.js';
 import type { EvidenceGraph } from '../graph/evidence-graph.js';
 import type { CapabilityRegistry } from '../registry/capability-registry.js';
 import type { ExecutionPlan } from './execution-plan.js';
 import type { PlannerResult, PlannerRunContext } from './planner-result.js';
 import type { WorkItem } from './work-item.js';
+
+import { defaultPlannerRules } from './planner-rules.js';
+import { CapabilityResolver } from './capability-resolver.js';
+import { ExecutionScheduler } from './execution-scheduler.js';
 
 export interface PlannerRuntimeDependencies {
   readonly evidenceGraph: EvidenceGraph;
@@ -20,11 +23,17 @@ export class PlannerRuntime {
   readonly #evidenceGraph: EvidenceGraph;
   readonly #capabilityRegistry: CapabilityRegistry;
   readonly #eventBus: EventBus;
+  
+  readonly #resolver: CapabilityResolver;
+  readonly #scheduler: ExecutionScheduler;
 
   constructor(dependencies: PlannerRuntimeDependencies) {
     this.#evidenceGraph = dependencies.evidenceGraph;
     this.#capabilityRegistry = dependencies.capabilityRegistry;
     this.#eventBus = dependencies.eventBus;
+
+    this.#resolver = new CapabilityResolver(this.#capabilityRegistry);
+    this.#scheduler = new ExecutionScheduler();
   }
 
   /**
@@ -33,30 +42,43 @@ export class PlannerRuntime {
   plan(runContext: PlannerRunContext): PlannerResult {
     const runId = runContext.metadata.runId;
     const graphSnapshot = this.#evidenceGraph.snapshot(runId);
-    const capabilityNames = this.#capabilityRegistry.listCapabilities();
-    const architectureAgentAvailable = this.#capabilityRegistry.has('ArchitectureAgent');
-    const architectureCandidates = architectureAgentAvailable ? this.#capabilityRegistry.resolveAll('ArchitectureAgent') : [];
-    const selectedImplementation = architectureCandidates[0];
-
+    
     this.#publishPlannerStarted(runContext.metadata);
 
-    const workItem: WorkItem = Object.freeze({
-      id: 'work-item-architecture-agent',
-      capability: 'ArchitectureAgent',
-      priority: 'Normal',
-      dependencies: Object.freeze([] as string[]),
-      metadata: Object.freeze({
-        graphNodeCount: graphSnapshot.nodes.length,
-        graphEdgeCount: graphSnapshot.edges.length,
-        capabilityAvailable: architectureAgentAvailable,
-        availableCapabilities: Object.freeze([...capabilityNames]),
-        selectedImplementationId: selectedImplementation?.id,
-      }),
-    });
+    const workItems: WorkItem[] = [];
+
+    // Evaluate rules (Policy)
+    for (const rule of defaultPlannerRules) {
+      const hasProduced = rule.producedEvidenceKinds.every(kind => 
+        this.#evidenceGraph.findByKind(kind).length > 0
+      );
+      if (hasProduced) continue;
+
+      const missingEvidence = rule.requiredEvidenceKinds.filter(kind => 
+        this.#evidenceGraph.findByKind(kind).length === 0
+      );
+
+      if (missingEvidence.length === 0) {
+        // Resolve implementation (Resolution)
+        const implementation = this.#resolver.resolve(rule.targetCapability);
+        
+        if (implementation) {
+          // Schedule work (Mechanism)
+          const workItem = this.#scheduler.schedule(
+            rule.targetCapability,
+            implementation,
+            graphSnapshot
+          );
+          workItems.push(workItem);
+        } else {
+          console.log(`Planner: Capability ${rule.targetCapability} required but no implementation resolved.`);
+        }
+      }
+    }
 
     const executionPlan = this.#freezePlan({
       runId,
-      workItems: [workItem],
+      workItems,
       createdAt: runContext.metadata.timestamp,
     });
 
