@@ -21,8 +21,17 @@ import { AgentRegistry } from '../runtime/registry/agent-registry.js';
 import { ReviewerRuntime } from '../runtime/reviewer/reviewer-runtime.js';
 import { StructuredLogger } from '../runtime/logging/structured-logger.js';
 import { architectureAgentDefinition } from '../runtime/agents/architecture-agent-definition.js';
+import { dependencyAgentDefinition } from '../runtime/agents/dependency-agent-definition.js';
 import { ReportGenerator } from '../runtime/reporting/report-generator.js';
 import { LifecycleManager } from '../runtime/lifecycle/lifecycle-manager.js';
+import { RepositoryScanner } from '../runtime/extractors/repository-scanner.js';
+import { PackageJsonExtractor } from '../runtime/extractors/package-json-extractor.js';
+import { TsConfigExtractor } from '../runtime/extractors/tsconfig-extractor.js';
+import { DockerfileExtractor } from '../runtime/extractors/dockerfile-extractor.js';
+import { ReadmeExtractor } from '../runtime/extractors/readme-extractor.js';
+import { TypeScriptAstExtractor } from '../runtime/extractors/typescript-ast-extractor.js';
+import { FrameworkDetector } from '../runtime/extractors/framework-detector.js';
+import { ArchitectureDetector } from '../runtime/extractors/architecture-detector.js';
 async function main() {
     const { values, positionals } = parseArgs({
         args: process.argv.slice(2),
@@ -62,6 +71,7 @@ async function main() {
         providerRegistry.register(new OllamaProvider());
         const agentRegistry = new AgentRegistry();
         agentRegistry.register('architecture-agent-1', architectureAgentDefinition);
+        agentRegistry.register('dependency-agent-1', dependencyAgentDefinition);
         componentRegistry.register({
             id: 'architecture-agent-1',
             capability: 'ArchitectureAgent',
@@ -69,6 +79,14 @@ async function main() {
             priority: 10,
             implementation: 'ignored',
             metadata: { name: 'ArchitectureAgent' },
+        });
+        componentRegistry.register({
+            id: 'dependency-agent-1',
+            capability: 'DependencyAnalysis',
+            version: '1.0.0',
+            priority: 20,
+            implementation: 'ignored',
+            metadata: { name: 'DependencyAnalysisAgent' },
         });
         const runManager = new RunManager({ eventBus, evidenceGraph });
         const plannerRuntime = new PlannerRuntime({ evidenceGraph, capabilityRegistry, eventBus });
@@ -91,40 +109,25 @@ async function main() {
             lifecycleManager,
         });
         kernel.boot();
-        // In a full implementation, a MetadataExtractor would run here.
-        // We will manually inject the repository metadata node for now to trigger the ArchitectureAgent.
+        const { runId } = runManager.createRun();
+        runManager.resumeRun(runId);
+        const scanner = new RepositoryScanner();
+        scanner.register(new PackageJsonExtractor());
+        scanner.register(new TsConfigExtractor());
+        scanner.register(new DockerfileExtractor());
+        scanner.register(new ReadmeExtractor());
+        scanner.register(new TypeScriptAstExtractor());
+        scanner.register(new FrameworkDetector());
+        scanner.register(new ArchitectureDetector());
+        console.log(`Scanning repository at ${targetPath}...`);
+        const scanResults = await scanner.scan(targetPath, runId);
         evidenceGraph.apply({
-            provenance: {
-                sourceType: 'metadata',
-                sourceId: 'cli',
-                sourceVersion: '0.1.0',
-                createdAt: new Date().toISOString(),
-                runId: 'system',
-                external: false,
-            },
-            nodes: [
-                {
-                    id: 'repo-1',
-                    kind: 'metadata:repository',
-                    label: targetPath,
-                    confidence: { score: 1.0, source: 'tool' },
-                    provenance: [],
-                }
-            ]
+            provenance: scanResults.provenance,
+            nodes: scanResults.nodes,
+            edges: scanResults.edges,
         });
-        // We manually resume the run because createRun doesn't start it, and orchestrator creates a new run inside execute().
-        // Wait, RuntimeOrchestrator.execute() creates a new run internally!
-        // So we shouldn't create a run above, we need to pass the repo data into the orchestrator or graph directly and let orchestrator pick it up.
-        // Actually, orchestrator in execute() currently does:
-        // const { runId } = this.#runManager.createRun();
-        // this.#runManager.resumeRun(runId);
-        // So we need to inject the repository node during the run, or change the orchestrator to take a runId.
-        // Let's modify orchestrator to take a workspace context or pre-populate the graph.
-        // For this CLI script, we will just patch the orchestrator's #metadata function if needed, or better, 
-        // we'll run orchestrator.execute() and since planner looks at the whole evidence graph, we just need the repo node in there globally (runId doesn't matter for the initial node if it's attached to the system run).
-        // We will let execute() run.
-        console.log(`Starting analysis on ${targetPath}...`);
-        const result = await orchestrator.execute();
+        console.log('Graph populated. Executing RuntimeOrchestrator...');
+        const result = await orchestrator.execute(runId);
         console.log('Analysis complete. Generating report...');
         const output = values.output;
         ReportGenerator.generate(evidenceGraph, output, result.runId);

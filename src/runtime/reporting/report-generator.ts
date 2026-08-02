@@ -31,6 +31,24 @@ export class ReportGenerator {
       markdown += `\n`;
     }
 
+    // Extract dependency health
+    const depNode = snapshot.nodes.find(n => n.kind === 'analysis:dependency-health');
+    if (depNode && depNode.value) {
+      markdown += `## Dependency Health\n`;
+      const val = depNode.value as any;
+      markdown += `- **Health Score**: ${val.healthScore}/100\n`;
+      if (val.unusedPackages?.length > 0) {
+        markdown += `- **Unused Packages**: ${val.unusedPackages.join(', ')}\n`;
+      }
+      if (val.duplicateDependencies?.length > 0) {
+        markdown += `- **Duplicate Dependencies**: ${val.duplicateDependencies.join(', ')}\n`;
+      }
+      if (val.risks?.length > 0) {
+        markdown += `- **Risks identified**: ${val.risks.length}\n`;
+      }
+      markdown += `\n`;
+    }
+
     // List all evidence
     markdown += `## Evidence Graph Summary\n`;
     markdown += `| Node ID | Kind | Label | Confidence |\n`;

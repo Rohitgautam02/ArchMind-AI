@@ -1,0 +1,16 @@
+# Node
+node_modules/
+dist/
+build/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ignore Chrome/Chromium artifacts
+*chrome*
+*Chrome*

@@ -7,6 +7,17 @@ export interface PlannerRule {
 
 export const defaultPlannerRules: PlannerRule[] = [
   {
+    targetCapability: 'DependencyAnalysis',
+    requiredEvidenceKinds: [
+      'metadata:package-json',
+      'ast:module'
+    ],
+    producedEvidenceKinds: [
+      'analysis:dependency-health'
+    ],
+    priority: 20,
+  },
+  {
     targetCapability: 'ArchitectureAgent',
     requiredEvidenceKinds: [
       'metadata:repository',

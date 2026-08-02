@@ -23,9 +23,13 @@ export class RuntimeOrchestrator {
         this.#eventBus = dependencies.eventBus;
     }
     /** Execute a single deterministic runtime pass from planning through review. */
-    async execute() {
-        const { runId } = this.#runManager.createRun();
-        this.#runManager.resumeRun(runId);
+    async execute(existingRunId) {
+        let runId = existingRunId;
+        if (!runId) {
+            const run = this.#runManager.createRun();
+            runId = run.runId;
+            this.#runManager.resumeRun(runId);
+        }
         const plannerResult = this.#plannerRuntime.plan({
             metadata: this.#metadata(runId),
         });
@@ -52,6 +56,9 @@ export class RuntimeOrchestrator {
                 agentId: component.id,
                 agentVersion: component.version,
             });
+            if (executionResult.status === 'failure') {
+                throw new Error(`Agent execution failed: ${executionResult.error}`);
+            }
             agentResults.push(executionResult);
             const reviewerResult = this.#reviewerRuntime.review({
                 runId,

@@ -59,6 +59,25 @@ export class EvidenceGraph {
             this.#hypotheses.set(hypothesis.id, this.#clone(hypothesis));
         }
     }
+    // Graph Query API
+    findByKind(kind) {
+        return this.listNodes().filter((n) => n.kind === kind || n.kind.startsWith(`${kind}:`));
+    }
+    findByRelation(relation) {
+        return this.listEdges().filter((e) => e.relation === relation);
+    }
+    findIncoming(nodeId, relation) {
+        return this.listEdges().filter((e) => e.to === nodeId && (!relation || e.relation === relation));
+    }
+    findOutgoing(nodeId, relation) {
+        return this.listEdges().filter((e) => e.from === nodeId && (!relation || e.relation === relation));
+    }
+    findNeighbours(nodeId, relation) {
+        const outgoingIds = this.findOutgoing(nodeId, relation).map((e) => e.to);
+        const incomingIds = this.findIncoming(nodeId, relation).map((e) => e.from);
+        const neighbourIds = new Set([...outgoingIds, ...incomingIds]);
+        return this.listNodes().filter((n) => neighbourIds.has(n.id));
+    }
     getNode(id) {
         const node = this.#nodes.get(id);
         return node ? this.#clone(node) : undefined;

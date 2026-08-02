@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import type { Extractor, ExtractorContext } from './extractor-contract.js';
+import type { Extractor, ExtractorContext, ExtractorResult } from './extractor-contract.js';
 import type { EvidenceNode, Provenance } from '../contracts.js';
 
 export class ReadmeExtractor implements Extractor {

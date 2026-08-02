@@ -23,6 +23,7 @@ import { AgentRegistry } from '../runtime/registry/agent-registry.js';
 import { ReviewerRuntime } from '../runtime/reviewer/reviewer-runtime.js';
 import { StructuredLogger } from '../runtime/logging/structured-logger.js';
 import { architectureAgentDefinition } from '../runtime/agents/architecture-agent-definition.js';
+import { dependencyAgentDefinition } from '../runtime/agents/dependency-agent-definition.js';
 import { ReportGenerator } from '../runtime/reporting/report-generator.js';
 import { LifecycleManager } from '../runtime/lifecycle/lifecycle-manager.js';
 import { RepositoryScanner } from '../runtime/extractors/repository-scanner.js';
@@ -80,6 +81,7 @@ async function main() {
 
     const agentRegistry = new AgentRegistry();
     agentRegistry.register('architecture-agent-1', architectureAgentDefinition);
+    agentRegistry.register('dependency-agent-1', dependencyAgentDefinition);
     
     componentRegistry.register({
       id: 'architecture-agent-1',
@@ -88,6 +90,15 @@ async function main() {
       priority: 10,
       implementation: 'ignored',
       metadata: { name: 'ArchitectureAgent' },
+    });
+
+    componentRegistry.register({
+      id: 'dependency-agent-1',
+      capability: 'DependencyAnalysis',
+      version: '1.0.0',
+      priority: 20,
+      implementation: 'ignored',
+      metadata: { name: 'DependencyAnalysisAgent' },
     });
 
     const runManager = new RunManager({ eventBus, evidenceGraph });

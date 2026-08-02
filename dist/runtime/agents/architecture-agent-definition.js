@@ -10,7 +10,10 @@ export const architectureAgentDefinition = {
     producedEvidence: ['ArchitectureDetected', 'ModuleBoundaryDetected'],
     isDeterministicEvidenceSufficient: () => false,
     buildSystemPrompt: () => 'You are an architecture agent. Analyze the repository metadata and return structured JSON with the architecture style and module boundaries.',
-    buildUserPrompt: () => 'Analyze the repository context.',
+    buildUserPrompt: (context) => {
+        const relevantNodes = context.graphSnapshot.nodes.filter(n => n.kind.startsWith('metadata:') || n.kind.startsWith('ast:'));
+        return `Analyze the repository context based on the following deterministic evidence:\n\n${JSON.stringify(relevantNodes, null, 2)}`;
+    },
     mapToEvidence: (result, context) => {
         const repositoryNodeId = `${context.workItem.id}:repository-detected`;
         const architectureNodeId = `${context.workItem.id}:architecture-detected`;

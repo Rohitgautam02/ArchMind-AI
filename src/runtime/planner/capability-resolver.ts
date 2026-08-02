@@ -1,5 +1,5 @@
 import type { CapabilityRegistry } from '../registry/capability-registry.js';
-import type { AbstractComponent } from '../registry/abstract-component.js';
+import type { ComponentDescriptor } from '../registry/component-descriptor.js';
 
 export class CapabilityResolver {
   readonly #capabilityRegistry: CapabilityRegistry;
@@ -11,7 +11,7 @@ export class CapabilityResolver {
   /**
    * Resolves an abstract capability to the best available implementation.
    */
-  resolve(capabilityName: string): AbstractComponent | undefined {
+  resolve(capabilityName: string): ComponentDescriptor | undefined {
     if (!this.#capabilityRegistry.has(capabilityName)) {
       return undefined;
     }
