@@ -60,7 +60,8 @@ describe('Runtime pipeline', () => {
 
     await runtime.execute();
 
-    expect(evidenceGraph.listNodes()).toHaveLength(3);
+    expect(evidenceGraph.findByKind('ArchitectureDetected')).toHaveLength(1);
+    expect(evidenceGraph.findByKind('ModuleBoundaryDetected')).toHaveLength(1);
   });
 
   it('reviewer approves', async () => {
@@ -152,6 +153,57 @@ import { AgentRuntime } from '../agents/agent-runtime.js';
 import { architectureAgentDefinition } from '../agents/architecture-agent-definition.js';
 import { CapabilityRegistry } from '../registry/capability-registry.js';
 
+const seedArchitectureRequiredEvidence = (evidenceGraph: EvidenceGraph, runId: string) => {
+  const provenance = {
+    sourceType: 'metadata' as const,
+    sourceId: 'test-fixture',
+    createdAt: '2026-07-28T00:00:00.000Z',
+    runId,
+    external: false,
+  };
+
+  evidenceGraph.apply({
+    nodes: [
+      {
+        id: `${runId}:repository`,
+        kind: 'metadata:repository',
+        label: 'repo',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+      {
+        id: `${runId}:package-json`,
+        kind: 'metadata:package-json',
+        label: 'package.json',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+      {
+        id: `${runId}:framework:frontend`,
+        kind: 'framework:frontend',
+        label: 'React',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+      {
+        id: `${runId}:framework:backend`,
+        kind: 'framework:backend',
+        label: 'Express',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+      {
+        id: `${runId}:class:App`,
+        kind: 'ast:class',
+        label: 'App',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+    ],
+    provenance,
+  });
+};
+
 function createRuntime() {
   const eventBus = new EventBus();
   const evidenceGraph = new EvidenceGraph();
@@ -179,6 +231,8 @@ function createRuntime() {
   const executionQueue = new ExecutionQueue({ eventBus });
   const agentRuntime = new AgentRuntime({ evidenceGraph, toolRegistry, providerRegistry });
   const reviewerRuntime = new ReviewerRuntime({ evidenceGraph, eventBus });
+
+  seedArchitectureRequiredEvidence(evidenceGraph, 'run-1');
 
   return {
     runtime: new RuntimeOrchestrator({

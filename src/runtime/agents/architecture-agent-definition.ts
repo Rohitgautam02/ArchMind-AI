@@ -44,7 +44,7 @@ export const architectureAgentDefinition: AgentDefinition<ArchitectureLLMOutput>
 
     const architectureDetected: EvidenceNode = Object.freeze({
       id: architectureNodeId,
-      kind: 'signal',
+      kind: 'ArchitectureDetected',
       label: 'ArchitectureDetected',
       value: { architecture: result.architecture, deterministic: false },
       confidence: { score: 0.98, source: 'derived' as const, rationale: result.rationale },
@@ -53,7 +53,7 @@ export const architectureAgentDefinition: AgentDefinition<ArchitectureLLMOutput>
 
     const moduleBoundaryDetected: EvidenceNode = Object.freeze({
       id: boundaryNodeId,
-      kind: 'signal',
+      kind: 'ModuleBoundaryDetected',
       label: 'ModuleBoundaryDetected',
       value: { boundaries: result.boundaries },
       confidence: { score: 0.97, source: 'derived' as const, rationale: 'Derived from LLM output' },

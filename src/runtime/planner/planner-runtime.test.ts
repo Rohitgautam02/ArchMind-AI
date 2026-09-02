@@ -32,9 +32,62 @@ const createPlanner = () => {
   return { planner: new PlannerRuntime({ evidenceGraph, capabilityRegistry, eventBus }), eventBus, evidenceGraph };
 };
 
+const seedArchitectureRequiredEvidence = (evidenceGraph: EvidenceGraph, runId: string) => {
+  const provenance = {
+    sourceType: 'metadata' as const,
+    sourceId: 'test-fixture',
+    createdAt: '2026-07-28T00:00:00.000Z',
+    runId,
+    external: false,
+  };
+
+  evidenceGraph.apply({
+    nodes: [
+      {
+        id: `${runId}:repository`,
+        kind: 'metadata:repository',
+        label: 'repo',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+      {
+        id: `${runId}:package-json`,
+        kind: 'metadata:package-json',
+        label: 'package.json',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+      {
+        id: `${runId}:framework:frontend`,
+        kind: 'framework:frontend',
+        label: 'React',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+      {
+        id: `${runId}:framework:backend`,
+        kind: 'framework:backend',
+        label: 'Express',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+      {
+        id: `${runId}:class:App`,
+        kind: 'ast:class',
+        label: 'App',
+        confidence: { score: 1, source: 'tool' as const },
+        provenance: [provenance],
+      },
+    ],
+    provenance,
+  });
+};
+
 describe('PlannerRuntime', () => {
   it('creates execution plan', () => {
-    const { planner } = createPlanner();
+    const runId = 'run-1';
+    const { planner, evidenceGraph } = createPlanner();
+    seedArchitectureRequiredEvidence(evidenceGraph, runId);
     const result = planner.plan({ metadata: createMetadata('run-1') });
 
     expect(result.executionPlan.runId).toBe('run-1');
@@ -71,33 +124,43 @@ describe('PlannerRuntime', () => {
   });
 
   it('handles populated graph', () => {
+    const runId = 'run-1';
     const { planner, evidenceGraph } = createPlanner();
+    seedArchitectureRequiredEvidence(evidenceGraph, runId);
 
+    const result = planner.plan({ metadata: createMetadata('run-1') });
+
+    expect(result.evidenceNodeCount).toBe(5);
+    expect(result.executionPlan.workItems[0]?.metadata).toMatchObject({ graphNodeCount: 5 });
+  });
+
+  it('no duplicate work items', () => {
+    const runId = 'run-1';
+    const { planner, evidenceGraph } = createPlanner();
+    seedArchitectureRequiredEvidence(evidenceGraph, runId);
     evidenceGraph.apply({
-      nodes: [{
-        id: 'node-1',
-        kind: 'package',
-        label: 'react',
-        value: 'react',
-        confidence: { score: 0.9, source: 'tool' },
-        provenance: [{ sourceType: 'metadata', sourceId: 'source-1', createdAt: '2026-07-28T00:00:00.000Z', runId: 'run-1', external: false }],
-      }],
-      provenance: { sourceType: 'metadata', sourceId: 'update-1', createdAt: '2026-07-28T00:00:00.000Z', runId: 'run-1', external: false },
+      nodes: [
+        {
+          id: `${runId}:architecture-detected`,
+          kind: 'ArchitectureDetected',
+          label: 'ArchitectureDetected',
+          confidence: { score: 0.98, source: 'derived' as const },
+          provenance: [{ sourceType: 'provider', sourceId: 'test-fixture', createdAt: '2026-07-28T00:00:00.000Z', runId, external: false }],
+        },
+        {
+          id: `${runId}:module-boundary-detected`,
+          kind: 'ModuleBoundaryDetected',
+          label: 'ModuleBoundaryDetected',
+          confidence: { score: 0.97, source: 'derived' as const },
+          provenance: [{ sourceType: 'provider', sourceId: 'test-fixture', createdAt: '2026-07-28T00:00:00.000Z', runId, external: false }],
+        },
+      ],
+      provenance: { sourceType: 'provider', sourceId: 'test-fixture', createdAt: '2026-07-28T00:00:00.000Z', runId, external: false },
     });
 
     const result = planner.plan({ metadata: createMetadata('run-1') });
 
-    expect(result.evidenceNodeCount).toBe(1);
-    expect(result.executionPlan.workItems[0]?.metadata).toMatchObject({ graphNodeCount: 1 });
-  });
-
-  it('no duplicate work items', () => {
-    const { planner } = createPlanner();
-
-    const result = planner.plan({ metadata: createMetadata('run-1') });
-
-    expect(result.executionPlan.workItems).toHaveLength(1);
-    expect(new Set(result.executionPlan.workItems.map((item) => item.id)).size).toBe(1);
+    expect(result.executionPlan.workItems).toHaveLength(0);
   });
 
   it('stable ordering', () => {

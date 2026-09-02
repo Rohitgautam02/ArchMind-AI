@@ -55,28 +55,23 @@ export class PlannerRuntime {
       );
       if (hasProduced) continue;
 
-      const requiredCounts = rule.requiredEvidenceKinds.map(k => this.#evidenceGraph.findByKind(k).length);
       const missingEvidence = rule.requiredEvidenceKinds.filter(kind => 
         this.#evidenceGraph.findByKind(kind).length === 0
       );
 
-      // Helpful debug info when running tests locally
-      // eslint-disable-next-line no-console
-      console.debug(`Planner: rule=${rule.targetCapability} requiredCounts=${JSON.stringify(requiredCounts)} missing=${JSON.stringify(missingEvidence)}`);
+      if (missingEvidence.length === 0) {
+        // Resolve implementation (Resolution)
+        const implementation = this.#resolver.resolve(rule.targetCapability);
 
-      // Resolve implementation (Resolution) and schedule if an implementation exists
-      const implementation = this.#resolver.resolve(rule.targetCapability);
-
-      if (implementation) {
-        const workItem = this.#scheduler.schedule(
-          rule.targetCapability,
-          implementation,
-          graphSnapshot
-        );
-        workItems.push(workItem);
-      } else {
-        // eslint-disable-next-line no-console
-        console.debug(`Planner: Capability ${rule.targetCapability} required but no implementation resolved.`);
+        if (implementation) {
+          // Schedule work (Mechanism)
+          const workItem = this.#scheduler.schedule(
+            rule.targetCapability,
+            implementation,
+            graphSnapshot
+          );
+          workItems.push(workItem);
+        }
       }
     }
 
