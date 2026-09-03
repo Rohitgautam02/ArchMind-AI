@@ -72,6 +72,57 @@ describe('AgentRuntime', () => {
     expect(nodes[0]?.provenance[0]?.sourceId).toBe('test-agent');
   });
 
+  it('preserves mapped supporting evidence IDs with runtime provenance', async () => {
+    const evidenceGraph = new EvidenceGraph();
+    const providerRegistry = new ProviderRegistry();
+    providerRegistry.register(new MockProvider('mock'));
+    const runtime = new AgentRuntime({ evidenceGraph, toolRegistry: new ToolRegistry(), providerRegistry });
+    const agentDef: AgentDefinition<{ answer: string }> = {
+      outputSchema: z.object({ answer: z.string() }),
+      requiredEvidence: [],
+      producedEvidence: ['test-node'],
+      buildSystemPrompt: () => 'system',
+      buildUserPrompt: () => 'user',
+      mapToEvidence: () => ({
+        confidence: 0.9,
+        generatedEvidenceLabels: ['mapped'],
+        nodes: [{
+          id: 'node-with-support',
+          kind: 'test',
+          label: 'mapped',
+          confidence: { score: 0.9, source: 'derived' },
+          provenance: [{
+            sourceType: 'derived',
+            sourceId: 'mapped-agent',
+            createdAt: '2026-07-28T00:00:00.000Z',
+            runId: 'run-1',
+            external: false,
+            supportingEvidenceIds: ['evidence-b', 'evidence-a', 'evidence-a'],
+          }],
+        }],
+      }),
+    };
+
+    const result = await runtime.execute({
+      runId: 'run-1',
+      workItem: { id: 'work-1', capability: 'Test', status: 'PENDING', dependencies: [] },
+      agentDefinition: agentDef,
+      agentId: 'test-agent',
+      agentVersion: '1.0.0',
+    });
+
+    expect(result.status).toBe('success');
+    expect(evidenceGraph.getNode('node-with-support')?.provenance).toEqual([{
+      sourceType: 'provider',
+      sourceId: 'test-agent',
+      sourceVersion: '1.0.0',
+      createdAt: expect.any(String),
+      runId: 'run-1',
+      external: false,
+      supportingEvidenceIds: ['evidence-a', 'evidence-b'],
+    }]);
+  });
+
   it('bypasses provider if deterministic evidence is sufficient', async () => {
     const evidenceGraph = new EvidenceGraph();
     const toolRegistry = new ToolRegistry();

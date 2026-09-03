@@ -40,6 +40,8 @@ export class PackageJsonExtractor implements Extractor {
             version: pkg.version,
             dependencies: pkg.dependencies ?? {},
             devDependencies: pkg.devDependencies ?? {},
+            peerDependencies: pkg.peerDependencies ?? {},
+            optionalDependencies: pkg.optionalDependencies ?? {},
             scripts: pkg.scripts ?? {},
             engines: pkg.engines ?? {},
             workspaces: pkg.workspaces ?? [],
