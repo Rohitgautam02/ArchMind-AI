@@ -31,7 +31,7 @@
 
     .scene {
       position: relative;
-      min-height: 145vh;
+      min-height: 420vh;
       overflow: hidden;
       isolation: isolate;
       background:
@@ -62,6 +62,14 @@
       background: linear-gradient(90deg, rgba(8, 11, 16, .96) 0%, rgba(8, 11, 16, .58) 40%, rgba(8, 11, 16, .16) 72%, rgba(8, 11, 16, .74) 100%);
     }
 
+    .visual-stage {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      min-height: 620px;
+      overflow: hidden;
+    }
+
     canvas {
       position: absolute;
       inset: 0;
@@ -69,11 +77,10 @@
       width: 100%;
       height: 100%;
       opacity: .86;
-      transform: translate3d(0, var(--scroll-shift, 0px), 0) scale(1.03);
-      transition: transform .18s ease-out;
+      transform: translate3d(0, 0, 0) scale(1.03);
     }
 
-    .nav, .hero, .trace {
+    .nav, .hero, .trace, .scene-progress {
       position: relative;
       width: min(1180px, calc(100% - 48px));
       margin: 0 auto;
@@ -127,15 +134,59 @@
     }
 
     .hero {
+      position: absolute;
+      inset: 0;
       display: grid;
       grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr);
       align-items: center;
-      min-height: 92vh;
       gap: 8vw;
-      padding: 10vh 0 20vh;
+      padding: 10vh 0 12vh;
     }
 
     .hero-copy { max-width: 650px; }
+
+    .story-frame {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate3d(0, 26px, 0) scale(.97);
+      transition: opacity .12s linear, transform .12s linear;
+    }
+
+    .story-frame.is-active { pointer-events: auto; }
+
+    .story-frame h1 { max-width: 760px; }
+
+    .story-note {
+      max-width: 450px;
+      margin: 32px 0 0;
+      color: #b2bec4;
+      font-size: clamp(1rem, 1.5vw, 1.25rem);
+      line-height: 1.65;
+    }
+
+    .story-frame .actions { margin-top: 38px; }
+
+    .scene-progress {
+      position: absolute;
+      right: max(24px, calc((100% - 1180px) / 2));
+      bottom: 34px;
+      left: max(24px, calc((100% - 1180px) / 2));
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--muted);
+      font: 10px ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .progress-rail { flex: 1; height: 1px; background: var(--line); }
+    .progress-fill { display: block; width: 0; height: 1px; background: var(--cyan); transition: width .16s linear; }
 
     .eyebrow {
       margin: 0 0 24px;
@@ -241,7 +292,13 @@
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 24px;
-      padding-bottom: 64px;
+      position: absolute;
+      right: 0;
+      bottom: 76px;
+      left: 0;
+      padding-bottom: 0;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .trace-item {
@@ -260,6 +317,8 @@
       font-size: 14px;
       font-weight: 500;
     }
+
+    .trace-item { transition: opacity .18s linear, transform .18s linear; }
 
     .analysis-entry {
       width: min(760px, calc(100% - 48px));
@@ -350,8 +409,10 @@
     @media (max-width: 760px) {
       .nav, .hero, .trace { width: min(100% - 32px, 560px); }
       .status { display: none; }
-      .scene { min-height: 135vh; }
+      .scene { min-height: 420vh; }
+      .visual-stage { min-height: 560px; }
       .hero { display: block; padding-top: 18vh; }
+      .story-frame { padding-top: 8vh; }
       h1 { font-size: clamp(3.5rem, 17vw, 6rem); }
       .readout { margin-top: 80px; padding-left: 18px; }
       .trace { grid-template-columns: 1fr; gap: 30px; padding-bottom: 40px; }
@@ -366,37 +427,46 @@
 </head>
 <body>
   <main class="scene">
-    <canvas id="architecture-field" aria-hidden="true"></canvas>
-    <nav class="nav" aria-label="Primary navigation">
-      <a class="brand" href="./index.html"><span class="brand-mark" aria-hidden="true"></span>ARCHMIND AI</a>
-      <span class="status">local intelligence / ready</span>
-    </nav>
+    <div class="visual-stage">
+      <canvas id="architecture-field" aria-hidden="true"></canvas>
+      <nav class="nav" aria-label="Primary navigation">
+        <a class="brand" href="./index.html"><span class="brand-mark" aria-hidden="true"></span>ARCHMIND AI</a>
+        <span class="status">local intelligence / ready</span>
+      </nav>
 
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-copy">
-        <p class="eyebrow">repository intelligence / 0.4.2</p>
-        <h1 id="hero-title">Understand the <span>architecture</span> behind your code.</h1>
-        <p class="lede">ArchMind turns repository structure into evidence: a living map of boundaries, dependencies, and decisions you can trace.</p>
-        <div class="actions">
-          <a class="primary" href="#analysis-entry">Enter the system</a>
-          <a class="quiet-link" href="#system-trace">View the signal ↓</a>
-        </div>
+      <section class="hero" aria-label="ArchMind story">
+        <article class="story-frame" data-scene="scan">
+          <p class="eyebrow">01 / scan / repository intelligence</p>
+          <h1>Understand the <span>architecture</span> behind your code.</h1>
+          <p class="story-note">Structure enters locally. Files become nodes; imports become edges.</p>
+        </article>
+        <article class="story-frame" data-scene="reason">
+          <p class="eyebrow">02 / reason / structure in motion</p>
+          <h1>See how the <span>system</span> is shaped.</h1>
+          <p class="story-note">Signals assemble into a model of how the system is shaped.</p>
+        </article>
+        <article class="story-frame" data-scene="verify">
+          <p class="eyebrow">03 / verify / evidence graph</p>
+          <h1>Every conclusion has a path back to <span>evidence.</span></h1>
+          <p class="story-note">Every conclusion keeps a path back to the evidence that earned it.</p>
+        </article>
+        <article class="story-frame" data-scene="enter">
+          <p class="eyebrow">04 / enter / local intelligence</p>
+          <h1>Your system. <span>Understood.</span></h1>
+          <p class="story-note">A traceable map of the decisions and dependencies inside your repository.</p>
+          <div class="actions">
+            <a class="primary" href="#analysis-entry">Enter the system</a>
+            <a class="quiet-link" href="#analysis-entry">Begin analysis ↓</a>
+          </div>
+        </article>
+      </section>
+
+      <div class="scene-progress" aria-hidden="true">
+        <span id="scene-label">01 / scan</span>
+        <span class="progress-rail"><span class="progress-fill" id="progress-fill"></span></span>
+        <span id="scene-index">01 / 04</span>
       </div>
-
-      <aside class="readout" aria-label="System readout">
-        <p class="readout-label">current observation</p>
-        <div class="readout-line"><span>graph state</span><strong>mapping</strong></div>
-        <div class="readout-line"><span>evidence layer</span><strong>deterministic first</strong></div>
-        <div class="readout-line"><span>inference mode</span><strong>traceable</strong></div>
-        <div class="readout-line"><span>signal depth</span><strong>04 / 07</strong></div>
-      </aside>
-    </section>
-
-    <section class="trace" id="system-trace" aria-label="System trace">
-      <div class="trace-item"><strong>01 / Scan</strong>Structure enters locally. Files become nodes; imports become edges.</div>
-      <div class="trace-item"><strong>02 / Reason</strong>Signals assemble into a model of how the system is shaped.</div>
-      <div class="trace-item"><strong>03 / Verify</strong>Every conclusion keeps a path back to the evidence that earned it.</div>
-    </section>
+    </div>
 
     <section class="analysis-entry" id="analysis-entry" aria-labelledby="analysis-title" hidden>
       <p class="analysis-heading">local runtime / analysis entry</p>
@@ -419,14 +489,48 @@
       const canvas = document.getElementById('architecture-field');
       const context = canvas.getContext('2d');
       const scene = document.querySelector('.scene');
+      const frames = Array.from(document.querySelectorAll('.story-frame'));
+      const sceneLabel = document.getElementById('scene-label');
+      const sceneIndex = document.getElementById('scene-index');
+      const progressFill = document.getElementById('progress-fill');
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const points = [];
       const links = [];
-      const count = 48;
+      const count = 58;
+      const layouts = [];
+      const names = ['scan', 'reason', 'verify', 'enter'];
       let width = 0;
       let height = 0;
       let pointerX = 0;
       let pointerY = 0;
+      let progress = 0;
+      let targetProgress = 0;
+      let lastFrame = 0;
+
+      function makeLayout(stageIndex) {
+        const layout = [];
+        for (let index = 0; index < count; index += 1) {
+          const angle = (index / count) * Math.PI * 2;
+          const ring = index % 3;
+          let x = 0;
+          let y = 0;
+          if (stageIndex === 0) {
+            x = (index * 137) % 1000 / 1000;
+            y = (index * 71 + ring * 83) % 840 / 840;
+          } else if (stageIndex === 1) {
+            x = .5 + Math.cos(angle) * (.16 + ring * .11);
+            y = .49 + Math.sin(angle) * (.16 + ring * .13);
+          } else if (stageIndex === 2) {
+            x = .5 + Math.cos(angle) * (.12 + ring * .12);
+            y = .52 + Math.sin(angle) * (.12 + ring * .13);
+          } else {
+            x = .5 + Math.cos(angle) * (.09 + ring * .17);
+            y = .5 + Math.sin(angle) * (.09 + ring * .17);
+          }
+          layout.push({ x, y, scale: stageIndex === 0 ? .72 + (index % 4) * .08 : 1 + ring * .12, opacity: stageIndex === 0 ? .35 + (index % 5) * .1 : stageIndex === 2 && index % 4 === 0 ? 1 : .62 + ring * .1 });
+        }
+        return layout;
+      }
 
       function resize() {
         const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -435,57 +539,92 @@
         canvas.width = width * ratio;
         canvas.height = height * ratio;
         context.setTransform(ratio, 0, 0, ratio, 0, 0);
-        points.length = 0;
-        for (let index = 0; index < count; index += 1) {
-          points.push({
-            x: Math.random() * width,
-            y: Math.random() * height * .74 + height * .08,
-            z: Math.random(),
-            phase: Math.random() * Math.PI * 2,
-            speed: .00012 + Math.random() * .0002,
-          });
-        }
+        layouts.length = 0;
+        for (let index = 0; index < 4; index += 1) layouts.push(makeLayout(index));
+      }
+
+      function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+      function ease(value) { return value * value * (3 - 2 * value); }
+      function mix(left, right, amount) { return left + (right - left) * amount; }
+
+      function samplePoint(index) {
+        const scaled = progress * 3;
+        const fromIndex = Math.min(2, Math.floor(scaled));
+        const local = ease(scaled - fromIndex);
+        const from = layouts[fromIndex][index];
+        const to = layouts[fromIndex + 1][index];
+        const depth = mix(0, 110, progress) * (index % 3) / 2;
+        return {
+          x: mix(from.x, to.x, local) * width + pointerX * (18 + depth),
+          y: mix(from.y, to.y, local) * height + pointerY * (14 + depth) + Math.sin(lastFrame * .0003 + index) * (2 + progress * 8),
+          scale: mix(from.scale, to.scale, local),
+          opacity: mix(from.opacity, to.opacity, local),
+        };
+      }
+
+      function updateNarrative() {
+        const scaled = progress * 3;
+        const active = Math.min(3, Math.floor(scaled + .5));
+        frames.forEach((frame, index) => {
+          const distance = Math.abs(scaled - index);
+          const opacity = clamp(1 - distance * 1.55, 0, 1);
+          frame.style.opacity = opacity;
+          frame.style.transform = `translate3d(0, ${distance * 26}px, 0) scale(${1 - distance * .035})`;
+          frame.classList.toggle('is-active', index === active);
+        });
+        sceneLabel.textContent = `0${active + 1} / ${names[active]}`;
+        sceneIndex.textContent = `0${active + 1} / 04`;
+        progressFill.style.width = `${progress * 100}%`;
+        scene.style.setProperty('--world-depth', `${progress * 100}px`);
       }
 
       function draw(time) {
+        lastFrame = time;
+        const delta = reduceMotion ? 1 : .09;
+        progress += (targetProgress - progress) * delta;
+        updateNarrative();
         context.clearRect(0, 0, width, height);
-        const driftX = pointerX * 18;
-        const driftY = pointerY * 12;
-        const activePoints = points.map((point) => ({
-          ...point,
-          x: point.x + driftX * point.z + Math.sin(time * point.speed + point.phase) * 16,
-          y: point.y + driftY * point.z + Math.cos(time * point.speed + point.phase) * 10,
-        }));
-
+        const activePoints = [];
+        for (let index = 0; index < count; index += 1) activePoints.push(samplePoint(index));
         links.length = 0;
+        const connectionLimit = 62 + Math.floor(progress * 44);
         for (let left = 0; left < activePoints.length; left += 1) {
-          for (let right = left + 1; right < activePoints.length; right += 1) {
+          for (let right = left + 1; right < activePoints.length && links.length < connectionLimit; right += 1) {
             const first = activePoints[left];
             const second = activePoints[right];
             const distance = Math.hypot(first.x - second.x, first.y - second.y);
-            if (distance < 150 && links.length < 92) links.push({ first, second, distance });
+            if (distance < 140 + progress * 50) links.push({ first, second, distance });
           }
         }
-
+        const rotation = (progress - .5) * .16;
+        context.save();
+        context.translate(width / 2, height / 2);
+        context.rotate(rotation);
+        context.translate(-width / 2, -height / 2);
         for (const link of links) {
-          const alpha = (1 - link.distance / 150) * .26;
+          const alpha = (1 - link.distance / (190 + progress * 40)) * (.16 + progress * .18);
           context.strokeStyle = `rgba(141, 228, 226, ${alpha})`;
-          context.lineWidth = link.distance < 84 ? 1 : .6;
+          context.lineWidth = progress > .62 && link.distance < 98 ? 1.1 : .6;
           context.beginPath();
           context.moveTo(link.first.x, link.first.y);
           context.lineTo(link.second.x, link.second.y);
           context.stroke();
         }
-
-        for (const point of activePoints) {
-          const radius = 1 + point.z * 2.8;
-          context.fillStyle = point.z > .72 ? 'rgba(229, 185, 107, .9)' : 'rgba(141, 228, 226, .72)';
+        for (let index = 0; index < activePoints.length; index += 1) {
+          const point = activePoints[index];
+          const radius = (1 + (index % 4) * .6) * point.scale;
+          context.fillStyle = index % 7 === 0 || progress > .72 && index % 5 === 0 ? `rgba(229, 185, 107, ${point.opacity})` : `rgba(141, 228, 226, ${point.opacity})`;
           context.beginPath();
           context.arc(point.x, point.y, radius, 0, Math.PI * 2);
           context.fill();
         }
-
+        context.restore();
         if (!reduceMotion) window.requestAnimationFrame(draw);
+      }
+
+      function updateScrollTarget() {
+        const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+        targetProgress = clamp(window.scrollY / maxScroll, 0, 1);
       }
 
       window.addEventListener('resize', resize);
@@ -493,11 +632,9 @@
         pointerX = event.clientX / window.innerWidth - .5;
         pointerY = event.clientY / window.innerHeight - .5;
       }, { passive: true });
-      window.addEventListener('scroll', () => {
-        const shift = Math.min(window.scrollY * .12, 90);
-        scene.style.setProperty('--scroll-shift', `${shift}px`);
-      }, { passive: true });
+      window.addEventListener('scroll', updateScrollTarget, { passive: true });
       resize();
+      updateScrollTarget();
       draw(0);
 
       const analysisEntry = document.getElementById('analysis-entry');
