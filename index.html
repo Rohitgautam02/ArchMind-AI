@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b10">
+  <title>ArchMind AI | Understand the architecture behind your code</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #e8eef3;
+      --muted: #8b9aa5;
+      --line: rgba(157, 183, 192, .18);
+      --cyan: #8de4e2;
+      --amber: #e5b96b;
+      --bg: #080b10;
+      --panel: rgba(11, 17, 23, .74);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    .scene {
+      position: relative;
+      min-height: 145vh;
+      overflow: hidden;
+      isolation: isolate;
+      background:
+        radial-gradient(circle at 72% 32%, rgba(24, 74, 78, .22), transparent 30rem),
+        radial-gradient(circle at 20% 74%, rgba(105, 71, 29, .12), transparent 28rem),
+        linear-gradient(135deg, #080b10 0%, #0b1218 52%, #080b10 100%);
+    }
+
+    .scene::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      opacity: .28;
+      background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+      background-size: 72px 72px;
+      transform: perspective(900px) rotateX(62deg) scale(1.8) translateY(18%);
+      transform-origin: center bottom;
+      mask-image: linear-gradient(to bottom, transparent 12%, black 54%, transparent 96%);
+    }
+
+    .scene::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background: linear-gradient(90deg, rgba(8, 11, 16, .96) 0%, rgba(8, 11, 16, .58) 40%, rgba(8, 11, 16, .16) 72%, rgba(8, 11, 16, .74) 100%);
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      width: 100%;
+      height: 100%;
+      opacity: .86;
+      transform: translate3d(0, var(--scroll-shift, 0px), 0) scale(1.03);
+      transition: transform .18s ease-out;
+    }
+
+    .nav, .hero, .trace {
+      position: relative;
+      width: min(1180px, calc(100% - 48px));
+      margin: 0 auto;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 28px;
+      animation: rise .9s cubic-bezier(.22, 1, .36, 1) both;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .16em;
+    }
+
+    .brand-mark {
+      width: 17px;
+      height: 17px;
+      border: 1px solid var(--cyan);
+      transform: rotate(45deg);
+      box-shadow: 0 0 20px rgba(141, 228, 226, .28);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 14px var(--cyan);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr);
+      align-items: center;
+      min-height: 92vh;
+      gap: 8vw;
+      padding: 10vh 0 20vh;
+    }
+
+    .hero-copy { max-width: 650px; }
+
+    .eyebrow {
+      margin: 0 0 24px;
+      color: var(--cyan);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 11px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      animation: reveal .8s .15s both;
+    }
+
+    h1 {
+      max-width: 680px;
+      margin: 0;
+      font-size: clamp(3.6rem, 8vw, 8.2rem);
+      font-weight: 500;
+      line-height: .9;
+      letter-spacing: -.06em;
+      animation: reveal 1s .28s both;
+    }
+
+    h1 span { color: var(--amber); }
+
+    .lede {
+      max-width: 450px;
+      margin: 32px 0 0;
+      color: #b2bec4;
+      font-size: clamp(1rem, 1.5vw, 1.25rem);
+      line-height: 1.65;
+      animation: reveal .9s .48s both;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin-top: 38px;
+      animation: reveal .9s .62s both;
+    }
+
+    .primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      border: 1px solid rgba(141, 228, 226, .7);
+      color: #071013;
+      background: var(--cyan);
+      font: 700 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .08em;
+      text-decoration: none;
+      text-transform: uppercase;
+      transition: transform .25s ease, background .25s ease, box-shadow .25s ease;
+    }
+
+    .primary:hover, .primary:focus-visible {
+      background: #c1fffa;
+      box-shadow: 0 0 30px rgba(141, 228, 226, .24);
+      transform: translateY(-3px);
+    }
+
+    .primary::after { content: "↗"; font-size: 16px; }
+
+    .quiet-link {
+      color: var(--muted);
+      font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .1em;
+      text-decoration: none;
+      text-transform: uppercase;
+      transition: color .2s ease;
+    }
+
+    .quiet-link:hover, .quiet-link:focus-visible { color: var(--ink); }
+
+    .readout {
+      align-self: end;
+      padding: 22px 0 0 28px;
+      border-left: 1px solid var(--line);
+      animation: reveal 1s .74s both;
+    }
+
+    .readout-label {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font: 10px ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .readout-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+      color: #a8b6bd;
+      font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .readout-line strong { color: var(--ink); font-weight: 500; }
+
+    .trace {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+      padding-bottom: 64px;
+    }
+
+    .trace-item {
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+      line-height: 1.7;
+    }
+
+    .trace-item strong {
+      display: block;
+      margin-bottom: 9px;
+      color: var(--ink);
+      font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes reveal { from { opacity: 0; transform: translateY(24px); clip-path: inset(0 0 100% 0); } to { opacity: 1; transform: translateY(0); clip-path: inset(0 0 0 0); } }
+
+    @media (max-width: 760px) {
+      .nav, .hero, .trace { width: min(100% - 32px, 560px); }
+      .status { display: none; }
+      .scene { min-height: 135vh; }
+      .hero { display: block; padding-top: 18vh; }
+      h1 { font-size: clamp(3.5rem, 17vw, 6rem); }
+      .readout { margin-top: 80px; padding-left: 18px; }
+      .trace { grid-template-columns: 1fr; gap: 30px; padding-bottom: 40px; }
+      .trace-item { max-width: 330px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="scene">
+    <canvas id="architecture-field" aria-hidden="true"></canvas>
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="./index.html"><span class="brand-mark" aria-hidden="true"></span>ARCHMIND AI</a>
+      <span class="status">local intelligence / ready</span>
+    </nav>
+
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">repository intelligence / 0.4.2</p>
+        <h1 id="hero-title">Understand the <span>architecture</span> behind your code.</h1>
+        <p class="lede">ArchMind turns repository structure into evidence: a living map of boundaries, dependencies, and decisions you can trace.</p>
+        <div class="actions">
+          <a class="primary" href="#system-trace">Enter the system</a>
+          <a class="quiet-link" href="#system-trace">View the signal ↓</a>
+        </div>
+      </div>
+
+      <aside class="readout" aria-label="System readout">
+        <p class="readout-label">current observation</p>
+        <div class="readout-line"><span>graph state</span><strong>mapping</strong></div>
+        <div class="readout-line"><span>evidence layer</span><strong>deterministic first</strong></div>
+        <div class="readout-line"><span>inference mode</span><strong>traceable</strong></div>
+        <div class="readout-line"><span>signal depth</span><strong>04 / 07</strong></div>
+      </aside>
+    </section>
+
+    <section class="trace" id="system-trace" aria-label="System trace">
+      <div class="trace-item"><strong>01 / Scan</strong>Structure enters locally. Files become nodes; imports become edges.</div>
+      <div class="trace-item"><strong>02 / Reason</strong>Signals assemble into a model of how the system is shaped.</div>
+      <div class="trace-item"><strong>03 / Verify</strong>Every conclusion keeps a path back to the evidence that earned it.</div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById('architecture-field');
+      const context = canvas.getContext('2d');
+      const scene = document.querySelector('.scene');
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const points = [];
+      const links = [];
+      const count = 48;
+      let width = 0;
+      let height = 0;
+      let pointerX = 0;
+      let pointerY = 0;
+
+      function resize() {
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        width = canvas.clientWidth;
+        height = canvas.clientHeight;
+        canvas.width = width * ratio;
+        canvas.height = height * ratio;
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        points.length = 0;
+        for (let index = 0; index < count; index += 1) {
+          points.push({
+            x: Math.random() * width,
+            y: Math.random() * height * .74 + height * .08,
+            z: Math.random(),
+            phase: Math.random() * Math.PI * 2,
+            speed: .00012 + Math.random() * .0002,
+          });
+        }
+      }
+
+      function draw(time) {
+        context.clearRect(0, 0, width, height);
+        const driftX = pointerX * 18;
+        const driftY = pointerY * 12;
+        const activePoints = points.map((point) => ({
+          ...point,
+          x: point.x + driftX * point.z + Math.sin(time * point.speed + point.phase) * 16,
+          y: point.y + driftY * point.z + Math.cos(time * point.speed + point.phase) * 10,
+        }));
+
+        links.length = 0;
+        for (let left = 0; left < activePoints.length; left += 1) {
+          for (let right = left + 1; right < activePoints.length; right += 1) {
+            const first = activePoints[left];
+            const second = activePoints[right];
+            const distance = Math.hypot(first.x - second.x, first.y - second.y);
+            if (distance < 150 && links.length < 92) links.push({ first, second, distance });
+          }
+        }
+
+        for (const link of links) {
+          const alpha = (1 - link.distance / 150) * .26;
+          context.strokeStyle = `rgba(141, 228, 226, ${alpha})`;
+          context.lineWidth = link.distance < 84 ? 1 : .6;
+          context.beginPath();
+          context.moveTo(link.first.x, link.first.y);
+          context.lineTo(link.second.x, link.second.y);
+          context.stroke();
+        }
+
+        for (const point of activePoints) {
+          const radius = 1 + point.z * 2.8;
+          context.fillStyle = point.z > .72 ? 'rgba(229, 185, 107, .9)' : 'rgba(141, 228, 226, .72)';
+          context.beginPath();
+          context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+          context.fill();
+        }
+
+        if (!reduceMotion) window.requestAnimationFrame(draw);
+      }
+
+      window.addEventListener('resize', resize);
+      window.addEventListener('pointermove', (event) => {
+        pointerX = event.clientX / window.innerWidth - .5;
+        pointerY = event.clientY / window.innerHeight - .5;
+      }, { passive: true });
+      window.addEventListener('scroll', () => {
+        const shift = Math.min(window.scrollY * .12, 90);
+        scene.style.setProperty('--scroll-shift', `${shift}px`);
+      }, { passive: true });
+      resize();
+      draw(0);
+    })();
+  </script>
+</body>
+</html>
