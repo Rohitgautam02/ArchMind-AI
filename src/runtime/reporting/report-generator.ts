@@ -52,7 +52,7 @@ export class ReportGenerator {
       this.#appendDuplicateVersions(dependencyHealth.duplicateVersions, (line) => {
         markdown += line;
       });
-      const supportingEvidenceIds = this.#supportingEvidenceIds(depNode);
+      const supportingEvidenceIds = depNode ? this.#supportingEvidenceIds(depNode) : [];
       if (supportingEvidenceIds.length > 0) {
         markdown += `### Supporting Evidence\n`;
         markdown += `- **Evidence IDs**: ${supportingEvidenceIds.map((id) => `\`${this.#escape(id)}\``).join(', ')}\n`;
@@ -81,16 +81,26 @@ export class ReportGenerator {
     const sections: readonly [string, readonly UsageFinding[]][] = [
       ['Declared and imported', usage.declaredAndImported],
       ['Declared but not imported', usage.declaredButNotImported],
-      ['Imported but undeclared', usage.importedButUndeclared],
     ];
 
     for (const [title, findings] of sections) {
       if (findings.length === 0) continue;
       append(`### ${title}\n`);
       for (const finding of findings) {
-        const details = 'dependencyType' in finding ? ` (${finding.dependencyType})` : '';
+        const details = ` (${finding.dependencyType})`;
         append(`- **${title}**: ${this.#escape(finding.package)}${details}`);
-        if ('version' in finding) append(` ${this.#escape(finding.version)}`);
+        append(` ${this.#escape(finding.version)}`);
+        const evidenceIds = finding.supportingEvidenceIds;
+        if (evidenceIds.length > 0) append(` [evidence: ${evidenceIds.map((id) => this.#escape(id)).join(', ')}]`);
+        append(`\n`);
+      }
+    }
+
+    if (usage.importedButUndeclared.length > 0) {
+      const title = 'Imported but undeclared';
+      append(`### ${title}\n`);
+      for (const finding of usage.importedButUndeclared) {
+        append(`- **${title}**: ${this.#escape(finding.package)}`);
         const evidenceIds = finding.supportingEvidenceIds;
         if (evidenceIds.length > 0) append(` [evidence: ${evidenceIds.map((id) => this.#escape(id)).join(', ')}]`);
         append(`\n`);
