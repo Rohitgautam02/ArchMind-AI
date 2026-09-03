@@ -18,6 +18,7 @@
     }
 
     * { box-sizing: border-box; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     html { scroll-behavior: smooth; }
     body {
       margin: 0;
@@ -260,6 +261,89 @@
       font-weight: 500;
     }
 
+    .analysis-entry {
+      width: min(760px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: 34px 0 100px;
+    }
+
+    .analysis-entry[hidden] { display: none; }
+
+    .analysis-heading {
+      margin: 0 0 10px;
+      color: var(--cyan);
+      font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .analysis-title {
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 4rem);
+      font-weight: 500;
+      letter-spacing: -.05em;
+    }
+
+    .analysis-form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-top: 26px;
+    }
+
+    .analysis-form input {
+      min-width: 0;
+      padding: 15px 16px;
+      border: 1px solid var(--line);
+      outline: none;
+      color: var(--ink);
+      background: var(--panel);
+      font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .analysis-form input:focus { border-color: rgba(141, 228, 226, .72); box-shadow: 0 0 0 3px rgba(141, 228, 226, .08); }
+
+    .analysis-form button {
+      padding: 15px 18px;
+      border: 1px solid var(--cyan);
+      color: #071013;
+      background: var(--cyan);
+      cursor: pointer;
+      font: 700 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .analysis-form button:disabled { cursor: wait; opacity: .55; }
+
+    .analysis-state {
+      min-height: 22px;
+      margin: 17px 0 0;
+      color: var(--muted);
+      font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .analysis-state[data-state="COMPLETE"] { color: var(--cyan); }
+    .analysis-state[data-state="ERROR"] { color: #ed907f; }
+
+    .analysis-result {
+      margin-top: 18px;
+      padding: 18px;
+      border-left: 1px solid var(--cyan);
+      background: rgba(11, 17, 23, .78);
+    }
+
+    .analysis-result[hidden] { display: none; }
+    .analysis-result-meta { margin: 0 0 12px; color: var(--muted); font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .analysis-result pre { max-height: 420px; margin: 0; overflow: auto; color: #c8d5d9; font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+
+    @media (max-width: 760px) {
+      .analysis-entry { width: min(100% - 32px, 560px); }
+      .analysis-form { grid-template-columns: 1fr; }
+    }
+
     @keyframes rise { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes reveal { from { opacity: 0; transform: translateY(24px); clip-path: inset(0 0 100% 0); } to { opacity: 1; transform: translateY(0); clip-path: inset(0 0 0 0); } }
 
@@ -294,7 +378,7 @@
         <h1 id="hero-title">Understand the <span>architecture</span> behind your code.</h1>
         <p class="lede">ArchMind turns repository structure into evidence: a living map of boundaries, dependencies, and decisions you can trace.</p>
         <div class="actions">
-          <a class="primary" href="#system-trace">Enter the system</a>
+          <a class="primary" href="#analysis-entry">Enter the system</a>
           <a class="quiet-link" href="#system-trace">View the signal ↓</a>
         </div>
       </div>
@@ -312,6 +396,21 @@
       <div class="trace-item"><strong>01 / Scan</strong>Structure enters locally. Files become nodes; imports become edges.</div>
       <div class="trace-item"><strong>02 / Reason</strong>Signals assemble into a model of how the system is shaped.</div>
       <div class="trace-item"><strong>03 / Verify</strong>Every conclusion keeps a path back to the evidence that earned it.</div>
+    </section>
+
+    <section class="analysis-entry" id="analysis-entry" aria-labelledby="analysis-title" hidden>
+      <p class="analysis-heading">local runtime / analysis entry</p>
+      <h2 class="analysis-title" id="analysis-title">Bring a repository into focus.</h2>
+      <form class="analysis-form" id="analysis-form">
+        <label class="sr-only" for="repository-path">Local repository path</label>
+        <input id="repository-path" name="repositoryPath" type="text" placeholder="C:\\work\\repository" autocomplete="off" required>
+        <button type="submit">Analyze repository</button>
+      </form>
+      <p class="analysis-state" id="analysis-state" data-state="READY">READY / local runtime connected</p>
+      <div class="analysis-result" id="analysis-result" hidden>
+        <p class="analysis-result-meta" id="analysis-result-meta"></p>
+        <pre id="analysis-report"></pre>
+      </div>
     </section>
   </main>
 
@@ -400,6 +499,58 @@
       }, { passive: true });
       resize();
       draw(0);
+
+      const analysisEntry = document.getElementById('analysis-entry');
+      const form = document.getElementById('analysis-form');
+      const pathInput = document.getElementById('repository-path');
+      const state = document.getElementById('analysis-state');
+      const result = document.getElementById('analysis-result');
+      const resultMeta = document.getElementById('analysis-result-meta');
+      const report = document.getElementById('analysis-report');
+
+      function setState(value, message) {
+        state.dataset.state = value;
+        state.textContent = `${value} / ${message}`;
+      }
+
+      function showAnalysisEntry() {
+        analysisEntry.hidden = false;
+        window.setTimeout(() => pathInput.focus(), 450);
+      }
+
+      document.querySelectorAll('a[href="#analysis-entry"]').forEach((link) => {
+        link.addEventListener('click', showAnalysisEntry);
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const repositoryPath = pathInput.value.trim();
+        if (!repositoryPath) return;
+
+        const button = form.querySelector('button');
+        button.disabled = true;
+        result.hidden = true;
+        setState('ANALYZING', 'scanning repository and reviewing evidence');
+
+        try {
+          const response = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ repositoryPath }),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.success) throw new Error(payload.error || 'Analysis failed');
+
+          setState('COMPLETE', 'evidence-backed report ready');
+          resultMeta.textContent = `RUN ${payload.runId || 'unavailable'} / ${payload.reportPath || 'report path unavailable'}`;
+          report.textContent = payload.reportContent || 'The runtime completed without report content.';
+          result.hidden = false;
+        } catch (error) {
+          setState('ERROR', error instanceof Error ? error.message : 'local analysis failed');
+        } finally {
+          button.disabled = false;
+        }
+      });
     })();
   </script>
 </body>
