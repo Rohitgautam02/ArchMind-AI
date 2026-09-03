@@ -33,18 +33,29 @@ export class ReportGenerator {
 
     // Extract dependency health
     const depNode = snapshot.nodes.find(n => n.kind === 'analysis:dependency-health');
-    if (depNode && depNode.value) {
+    const dependencyHealth = depNode ? dependencyHealthValue(depNode.value) : undefined;
+    if (dependencyHealth) {
       markdown += `## Dependency Health\n`;
-      const val = depNode.value as any;
-      markdown += `- **Health Score**: ${val.healthScore}/100\n`;
-      if (val.unusedPackages?.length > 0) {
-        markdown += `- **Unused Packages**: ${val.unusedPackages.join(', ')}\n`;
+      markdown += `- **Health Score**: ${dependencyHealth.healthScore}/100\n`;
+      if (dependencyHealth.unusedPackages.length > 0) {
+        markdown += `- **Unused Packages**: ${dependencyHealth.unusedPackages.join(', ')}\n`;
       }
-      if (val.duplicateDependencies?.length > 0) {
-        markdown += `- **Duplicate Dependencies**: ${val.duplicateDependencies.join(', ')}\n`;
+      if (dependencyHealth.risks.length > 0) {
+        markdown += `- **Risks identified**: ${dependencyHealth.risks.length}\n`;
       }
-      if (val.risks?.length > 0) {
-        markdown += `- **Risks identified**: ${val.risks.length}\n`;
+      this.#appendDependencyUsage(dependencyHealth.directDependencyUsage, (line) => {
+        markdown += line;
+      });
+      this.#appendResolvedDependencies(dependencyHealth.resolvedDependencies, (line) => {
+        markdown += line;
+      });
+      this.#appendDuplicateVersions(dependencyHealth.duplicateVersions, (line) => {
+        markdown += line;
+      });
+      const supportingEvidenceIds = this.#supportingEvidenceIds(depNode);
+      if (supportingEvidenceIds.length > 0) {
+        markdown += `### Supporting Evidence\n`;
+        markdown += `- **Evidence IDs**: ${supportingEvidenceIds.map((id) => `\`${this.#escape(id)}\``).join(', ')}\n`;
       }
       markdown += `\n`;
     }
@@ -65,4 +76,164 @@ export class ReportGenerator {
   static #escape(str: string): string {
     return str.replace(/\|/g, '\\|').replace(/\n/g, ' ');
   }
+
+  static #appendDependencyUsage(usage: DependencyUsage, append: (line: string) => void): void {
+    const sections: readonly [string, readonly UsageFinding[]][] = [
+      ['Declared and imported', usage.declaredAndImported],
+      ['Declared but not imported', usage.declaredButNotImported],
+      ['Imported but undeclared', usage.importedButUndeclared],
+    ];
+
+    for (const [title, findings] of sections) {
+      if (findings.length === 0) continue;
+      append(`### ${title}\n`);
+      for (const finding of findings) {
+        const details = 'dependencyType' in finding ? ` (${finding.dependencyType})` : '';
+        append(`- **${title}**: ${this.#escape(finding.package)}${details}`);
+        if ('version' in finding) append(` ${this.#escape(finding.version)}`);
+        const evidenceIds = finding.supportingEvidenceIds;
+        if (evidenceIds.length > 0) append(` [evidence: ${evidenceIds.map((id) => this.#escape(id)).join(', ')}]`);
+        append(`\n`);
+      }
+    }
+  }
+
+  static #appendResolvedDependencies(dependencies: readonly ResolvedDependency[], append: (line: string) => void): void {
+    if (dependencies.length === 0) return;
+    append(`### Resolved Dependencies\n`);
+    for (const dependency of dependencies) {
+      const declared = dependency.declaredVersion ? ` declared ${this.#escape(dependency.declaredVersion)}` : '';
+      const type = dependency.dependencyType ? ` (${dependency.dependencyType})` : '';
+      const scope = dependency.isDirect ? 'direct' : 'transitive';
+      append(`- **${this.#escape(dependency.package)}**: ${declared} resolved ${this.#escape(dependency.resolvedVersion)} (${scope}${type}) at \`${this.#escape(dependency.location)}\` [evidence: ${dependency.supportingEvidenceIds.map((id) => this.#escape(id)).join(', ')}]\n`);
+    }
+  }
+
+  static #appendDuplicateVersions(duplicates: readonly DuplicateVersion[], append: (line: string) => void): void {
+    if (duplicates.length === 0) return;
+    append(`### Duplicate Resolved Versions\n`);
+    for (const duplicate of duplicates) {
+      append(`- **${this.#escape(duplicate.package)}**: versions ${duplicate.versions.map((version) => this.#escape(version)).join(', ')} at ${duplicate.locations.map((location) => `\`${this.#escape(location)}\``).join(', ')} [evidence: ${duplicate.supportingEvidenceIds.map((id) => this.#escape(id)).join(', ')}]\n`);
+    }
+  }
+
+  static #supportingEvidenceIds(node: EvidenceNode): readonly string[] {
+    return [...new Set(node.provenance.flatMap((provenance) => provenance.supportingEvidenceIds ?? []))]
+      .sort((left, right) => left.localeCompare(right));
+  }
+}
+
+interface DependencyHealthValue {
+  readonly healthScore: number;
+  readonly unusedPackages: readonly string[];
+  readonly risks: readonly unknown[];
+  readonly directDependencyUsage: DependencyUsage;
+  readonly resolvedDependencies: readonly ResolvedDependency[];
+  readonly duplicateVersions: readonly DuplicateVersion[];
+}
+
+interface DependencyUsage {
+  readonly declaredAndImported: readonly UsageFinding[];
+  readonly declaredButNotImported: readonly UsageFinding[];
+  readonly importedButUndeclared: readonly ImportedFinding[];
+}
+
+interface UsageFinding {
+  readonly package: string;
+  readonly version: string;
+  readonly dependencyType: string;
+  readonly supportingEvidenceIds: readonly string[];
+}
+
+interface ImportedFinding {
+  readonly package: string;
+  readonly supportingEvidenceIds: readonly string[];
+}
+
+interface ResolvedDependency {
+  readonly package: string;
+  readonly resolvedVersion: string;
+  readonly location: string;
+  readonly isDirect: boolean;
+  readonly declaredVersion?: string;
+  readonly dependencyType?: string;
+  readonly supportingEvidenceIds: readonly string[];
+}
+
+interface DuplicateVersion {
+  readonly package: string;
+  readonly versions: readonly string[];
+  readonly locations: readonly string[];
+  readonly supportingEvidenceIds: readonly string[];
+}
+
+function dependencyHealthValue(value: unknown): DependencyHealthValue | undefined {
+  if (!isRecord(value)
+    || typeof value.healthScore !== 'number'
+    || !isStringArray(value.unusedPackages)
+    || !Array.isArray(value.risks)
+    || !isRecord(value.directDependencyUsage)
+    || !isUsageArray(value.directDependencyUsage.declaredAndImported)
+    || !isUsageArray(value.directDependencyUsage.declaredButNotImported)
+    || !isImportedArray(value.directDependencyUsage.importedButUndeclared)
+    || !Array.isArray(value.resolvedDependencies)
+    || !value.resolvedDependencies.every(isResolvedDependency)
+    || !Array.isArray(value.duplicateVersions)
+    || !value.duplicateVersions.every(isDuplicateVersion)) {
+    return undefined;
+  }
+
+  return {
+    healthScore: value.healthScore,
+    unusedPackages: value.unusedPackages,
+    risks: value.risks,
+    directDependencyUsage: {
+      declaredAndImported: value.directDependencyUsage.declaredAndImported,
+      declaredButNotImported: value.directDependencyUsage.declaredButNotImported,
+      importedButUndeclared: value.directDependencyUsage.importedButUndeclared,
+    },
+    resolvedDependencies: value.resolvedDependencies,
+    duplicateVersions: value.duplicateVersions,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isUsageArray(value: unknown): value is readonly UsageFinding[] {
+  return Array.isArray(value) && value.every((item) => isRecord(item)
+    && typeof item.package === 'string'
+    && typeof item.version === 'string'
+    && typeof item.dependencyType === 'string'
+    && isStringArray(item.supportingEvidenceIds));
+}
+
+function isImportedArray(value: unknown): value is readonly ImportedFinding[] {
+  return Array.isArray(value) && value.every((item) => isRecord(item)
+    && typeof item.package === 'string'
+    && isStringArray(item.supportingEvidenceIds));
+}
+
+function isResolvedDependency(value: unknown): value is ResolvedDependency {
+  return isRecord(value)
+    && typeof value.package === 'string'
+    && typeof value.resolvedVersion === 'string'
+    && typeof value.location === 'string'
+    && typeof value.isDirect === 'boolean'
+    && (value.declaredVersion === undefined || typeof value.declaredVersion === 'string')
+    && (value.dependencyType === undefined || typeof value.dependencyType === 'string')
+    && isStringArray(value.supportingEvidenceIds);
+}
+
+function isDuplicateVersion(value: unknown): value is DuplicateVersion {
+  return isRecord(value)
+    && typeof value.package === 'string'
+    && isStringArray(value.versions)
+    && isStringArray(value.locations)
+    && isStringArray(value.supportingEvidenceIds);
 }
