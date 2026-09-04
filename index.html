@@ -536,8 +536,6 @@
       const sceneIndex = document.getElementById('scene-index');
       const progressFill = document.getElementById('progress-fill');
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const points = [];
-      const links = [];
       let count = 58;
       const layouts = [];
       const names = ['scan', 'reason', 'verify', 'enter'];
@@ -562,7 +560,7 @@
       function stableHash(str) {
         let hash = 5381;
         for (let i = 0; i < str.length; i++) {
-          hash = ((hash << 5) + hash) + str.charCodeAt(i); /* hash * 33 + c */
+          hash = ((hash << 5) + hash) + str.charCodeAt(i);
         }
         return (hash >>> 0);
       }
@@ -592,53 +590,262 @@
         return layout;
       }
 
-      function makeRealLayout(nodes, stageIndex) {
-        const layout = [];
+      function computeTopology(nodes, edges) {
         const n = nodes.length;
-        if (n === 0) return layout;
-
-        const maxRadius = 0.38;
-
-        for (let index = 0; index < n; index += 1) {
-          const node = nodes[index];
-          const hash = stableHash(node.id);
-          
-          // Use hash to deterministically place, but keep it structured so it spreads out
-          // Map hash to a deterministic index for spiral
-          const deterministicIndex = hash % Math.max(n * 2, 100);
-          
-          const goldenRatio = (1 + Math.sqrt(5)) / 2;
-          const angleIncrement = Math.PI * 2 * goldenRatio;
-          
-          // distance based on hash modulo to create a spread, avoiding center clump
-          const distanceNormalized = ((hash % 100) / 100);
-          const distance = 0.05 + distanceNormalized * maxRadius; 
-          const angle = deterministicIndex * angleIncrement;
-          
-          let x = 0.5 + Math.cos(angle) * distance;
-          let y = 0.5 + Math.sin(angle) * distance;
-          
-          if (stageIndex === 0) {
-             x = x + Math.cos(angle) * 0.15;
-             y = y + Math.sin(angle) * 0.15;
-          } else if (stageIndex === 1) {
-             x = x + Math.cos(angle) * 0.05;
-             y = y + Math.sin(angle) * 0.05;
-          }
-
-          let scale = 1;
-          if (node.confidence !== undefined) {
-             scale = 0.6 + (node.confidence * 0.6);
-          }
-
-          layout.push({
-            x, y,
-            scale: scale * (stageIndex === 0 ? 0.7 : 1),
-            opacity: stageIndex === 0 ? 0.3 : 1,
-            originalNode: node
-          });
+        if (n === 0) return [];
+        if (n === 1) {
+          return [{ id: nodes[0].id, x: 0.5, y: 0.5, degree: 0 }];
         }
-        return layout;
+
+        // 1. Build adjacency
+        const adjacency = new Map();
+        nodes.forEach(node => adjacency.set(node.id, []));
+        edges.forEach(edge => {
+          if (adjacency.has(edge.source)) adjacency.get(edge.source).push(edge.target);
+          if (adjacency.has(edge.target)) adjacency.get(edge.target).push(edge.source);
+        });
+
+        // Deterministic sort of adjacency lists
+        for (const [id, neighbors] of adjacency.entries()) {
+          neighbors.sort((a, b) => a.localeCompare(b));
+        }
+
+        // 2. Identify connected components
+        const visited = new Set();
+        const components = [];
+        
+        // Sort nodes to ensure deterministic component discovery
+        const sortedNodes = [...nodes].sort((a, b) => a.id.localeCompare(b.id));
+
+        for (const node of sortedNodes) {
+          if (!visited.has(node.id)) {
+            const comp = [];
+            const queue = [node.id];
+            visited.add(node.id);
+            
+            while (queue.length > 0) {
+              const curr = queue.shift();
+              comp.push(curr);
+              for (const neighbor of adjacency.get(curr)) {
+                if (!visited.has(neighbor)) {
+                  visited.add(neighbor);
+                  queue.push(neighbor);
+                }
+              }
+            }
+            components.push(comp);
+          }
+        }
+
+        // Sort components by size descending, then deterministically by first node id
+        components.sort((a, b) => {
+           if (b.length !== a.length) return b.length - a.length;
+           return a[0].localeCompare(b[0]);
+        });
+
+        const results = [];
+        
+        // Configuration
+        const baseRadius = 0.08; 
+        
+        // 3. Layout components
+        components.forEach((comp, compIndex) => {
+           // Component Anchor Position
+           let cx = 0, cy = 0;
+           if (compIndex === 0) {
+              // Largest component in the center
+              cx = 0; cy = 0;
+           } else {
+              // Arrange other components in a spiral around the center
+              const ring = Math.ceil(Math.sqrt(compIndex));
+              const maxInRing = 8 * ring;
+              const idxInRing = compIndex - Math.pow(ring - 1, 2);
+              const angle = (idxInRing / maxInRing) * Math.PI * 2;
+              const dist = ring * 0.4; 
+              cx = Math.cos(angle) * dist;
+              cy = Math.sin(angle) * dist;
+           }
+           
+           if (comp.length === 1) {
+               results.push({
+                   id: comp[0],
+                   x: cx,
+                   y: cy,
+                   degree: adjacency.get(comp[0]).length
+               });
+               return;
+           }
+
+           // Find root (highest degree, tie-break by ID)
+           let root = comp[0];
+           let maxDegree = -1;
+           for (const id of comp) {
+               const deg = adjacency.get(id).length;
+               if (deg > maxDegree || (deg === maxDegree && id.localeCompare(root) < 0)) {
+                   maxDegree = deg;
+                   root = id;
+               }
+           }
+           
+           // BFS to find depth rings
+           const depthMap = new Map();
+           const rings = []; // index is depth, value is array of node ids
+           const q = [root];
+           depthMap.set(root, 0);
+           rings[0] = [root];
+           
+           const compVisited = new Set([root]);
+           
+           while(q.length > 0) {
+               const curr = q.shift();
+               const d = depthMap.get(curr);
+               
+               for (const neighbor of adjacency.get(curr)) {
+                   if (!compVisited.has(neighbor) && comp.includes(neighbor)) {
+                       compVisited.add(neighbor);
+                       depthMap.set(neighbor, d + 1);
+                       if (!rings[d + 1]) rings[d + 1] = [];
+                       rings[d + 1].push(neighbor);
+                       q.push(neighbor);
+                   }
+               }
+           }
+           
+           // Handle any disjoint nodes within component array (shouldn't happen but safe guard)
+           for (const id of comp) {
+               if (!compVisited.has(id)) {
+                   if (!rings[1]) rings[1] = [];
+                   rings[1].push(id);
+               }
+           }
+           
+           // Layout nodes within component rings
+           for (let d = 0; d < rings.length; d++) {
+               const ringNodes = rings[d];
+               if (d === 0) {
+                   results.push({
+                       id: ringNodes[0],
+                       x: cx,
+                       y: cy,
+                       degree: adjacency.get(ringNodes[0]).length
+                   });
+               } else {
+                   // Sort ring nodes by hash for stable angular placement
+                   ringNodes.sort((a, b) => stableHash(a) - stableHash(b));
+                   
+                   // Dynamic radius scaling based on number of nodes in ring
+                   const r = d * baseRadius * (1 + (ringNodes.length / 20));
+                   const count = ringNodes.length;
+                   
+                   // Base angle offset using hash of root to rotate the whole component slightly differently
+                   const angleOffset = (stableHash(root) % 360) * (Math.PI / 180);
+                   
+                   for (let i = 0; i < count; i++) {
+                       const angle = angleOffset + (i / count) * Math.PI * 2;
+                       results.push({
+                           id: ringNodes[i],
+                           x: cx + Math.cos(angle) * r,
+                           y: cy + Math.sin(angle) * r,
+                           degree: adjacency.get(ringNodes[i]).length
+                       });
+                   }
+               }
+           }
+        });
+
+        // 4. Normalize coordinates to [0..1] range, centered at 0.5
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        results.forEach(p => {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        });
+
+        const w = maxX - minX;
+        const h = maxY - minY;
+        const scale = Math.max(w, h) > 0 ? 0.7 / Math.max(w, h) : 1;
+
+        // Apply scaling
+        results.forEach(p => {
+            p.x = 0.5 + (p.x - (minX + w / 2)) * scale;
+            p.y = 0.5 + (p.y - (minY + h / 2)) * scale;
+        });
+
+        return results;
+      }
+
+      function makeRealLayoutStages(nodes, topology) {
+        const stages = [[], [], [], []];
+        const n = nodes.length;
+        
+        for (let i = 0; i < n; i++) {
+          const node = nodes[i];
+          const topo = topology.find(t => t.id === node.id);
+          const kind = (node.kind || '').toLowerCase();
+          
+          let semanticScale = 1;
+          let semanticOpacity = 0.8;
+          let isForeground = false;
+          let isBackground = false;
+
+          // Semantic depth/visuals based on kind
+          if (kind.startsWith('metadata')) {
+            semanticScale = 0.5;
+            semanticOpacity = 0.4;
+            isBackground = true;
+          } else if (kind.includes('component') || kind.includes('framework') || kind.includes('server')) {
+            semanticScale = 1.3;
+            semanticOpacity = 1;
+            isForeground = true;
+          } else if (kind.includes('module') || kind.includes('ast')) {
+            semanticScale = 0.9;
+            semanticOpacity = 0.7;
+          }
+
+          // Degree influences foreground presence
+          if (topo.degree > 3) {
+            semanticScale *= 1.15;
+            isForeground = true;
+          }
+
+          // Depth parallax calculation (Z-axis approximation)
+          const zDepth = isForeground ? 1.2 : (isBackground ? -0.5 : 0);
+
+          for (let stageIndex = 0; stageIndex < 4; stageIndex++) {
+            let x = topo.x;
+            let y = topo.y;
+            let scale = semanticScale;
+            let opacity = semanticOpacity;
+
+            if (stageIndex === 0) { // SCAN: tight, atmospheric
+              x = 0.5 + (x - 0.5) * 0.7;
+              y = 0.5 + (y - 0.5) * 0.7;
+              scale *= 0.6;
+              opacity *= 0.3;
+            } else if (stageIndex === 1) { // REASON: structure emerging
+              x = 0.5 + (x - 0.5) * 0.9;
+              y = 0.5 + (y - 0.5) * 0.9;
+              scale *= 0.85;
+              opacity *= 0.6;
+            } else if (stageIndex === 2) { // VERIFY: confidence influences scale
+              if (node.confidence !== undefined) {
+                scale *= 0.5 + (node.confidence * 0.5);
+                opacity *= 0.6 + (node.confidence * 0.4);
+              }
+            } else if (stageIndex === 3) { // ENTER: clear, depth fully realized
+              // Fully realized scale and opacity
+            }
+
+            stages[stageIndex].push({
+              x, y, scale, opacity, 
+              originalNode: node, 
+              zDepth, 
+              kindGroup: isForeground ? 'fore' : (isBackground ? 'back' : 'mid')
+            });
+          }
+        }
+        return stages;
       }
 
       function resize() {
@@ -649,9 +856,12 @@
         canvas.height = height * ratio;
         context.setTransform(ratio, 0, 0, ratio, 0, 0);
         layouts.length = 0;
+        
         if (realGraph) {
             count = realGraph.nodes.length;
-            for (let index = 0; index < 4; index += 1) layouts.push(makeRealLayout(realGraph.nodes, index));
+            const topo = computeTopology(realGraph.nodes, realGraph.edges);
+            const stages = makeRealLayoutStages(realGraph.nodes, topo);
+            stages.forEach(stage => layouts.push(stage));
         } else {
             count = 58;
             for (let index = 0; index < 4; index += 1) layouts.push(makeProceduralLayout(index));
@@ -668,13 +878,20 @@
         const local = ease(scaled - fromIndex);
         const from = layouts[fromIndex][index];
         const to = layouts[fromIndex + 1][index];
-        const depth = mix(0, 110, progress) * (index % 3) / 2;
+        
+        // Depth-based parallax: foreground moves faster with pointer
+        const zDepth = from.zDepth || 0;
+        const parallaxMultiplier = realGraph ? (14 + zDepth * 8) : 18;
+        const scrollParallax = Math.sin(lastFrame * .0003 + index) * (2 + progress * (realGraph ? 4 + zDepth * 3 : 8));
+        
         return {
-          x: mix(from.x, to.x, local) * width + pointerX * (18 + depth),
-          y: mix(from.y, to.y, local) * height + pointerY * (14 + depth) + Math.sin(lastFrame * .0003 + index) * (2 + progress * 8),
+          x: mix(from.x, to.x, local) * width + pointerX * parallaxMultiplier,
+          y: mix(from.y, to.y, local) * height + pointerY * parallaxMultiplier + scrollParallax,
           scale: mix(from.scale, to.scale, local),
           opacity: mix(from.opacity, to.opacity, local),
-          originalNode: from ? from.originalNode : null
+          originalNode: from ? from.originalNode : null,
+          kindGroup: from ? from.kindGroup : 'mid',
+          zDepth
         };
       }
 
@@ -691,7 +908,10 @@
         sceneLabel.textContent = `0${active + 1} / ${names[active]}`;
         sceneIndex.textContent = `0${active + 1} / 04`;
         progressFill.style.width = `${progress * 100}%`;
-        scene.style.setProperty('--world-depth', `${progress * 100}px`);
+        
+        // Depth scales as you scroll deeper
+        const depthVisual = realGraph ? progress * 150 : progress * 100;
+        scene.style.setProperty('--world-depth', `${depthVisual}px`);
       }
 
       function draw(time) {
@@ -708,23 +928,32 @@
 
         const activePoints = [];
         for (let index = 0; index < count; index += 1) activePoints.push(samplePoint(index));
-        links.length = 0;
+        
+        // Sort points by zDepth so foreground draws last
+        if (realGraph) {
+            activePoints.sort((a, b) => a.zDepth - b.zDepth);
+        }
+        
+        const links = [];
         
         if (realGraph) {
+            // Edges emerge in REASON stage (progress > 0.3)
+            const edgeEmergeAlpha = clamp((progress - 0.3) * 1.5, 0, 1);
+            
             for (const edge of realGraph.edges) {
-                const sourceIdx = realGraph.nodes.findIndex(n => n.id === edge.source);
-                const targetIdx = realGraph.nodes.findIndex(n => n.id === edge.target);
-                if (sourceIdx >= 0 && targetIdx >= 0) {
-                    const first = activePoints[sourceIdx];
-                    const second = activePoints[targetIdx];
-                    const distance = Math.hypot(first.x - second.x, first.y - second.y);
-                    
+                const sourcePoint = activePoints.find(p => p.originalNode.id === edge.source);
+                const targetPoint = activePoints.find(p => p.originalNode.id === edge.target);
+                
+                if (sourcePoint && targetPoint) {
+                    const distance = Math.hypot(sourcePoint.x - targetPoint.x, sourcePoint.y - targetPoint.y);
                     let isSelected = false;
-                    if (selectedNodeId && (first.originalNode.id === selectedNodeId || second.originalNode.id === selectedNodeId)) {
+                    if (selectedNodeId && (sourcePoint.originalNode.id === selectedNodeId || targetPoint.originalNode.id === selectedNodeId)) {
                         isSelected = true;
                     }
                     
-                    links.push({ first, second, distance, real: true, isSelected });
+                    // Edge depth is average of endpoint depths
+                    const edgeDepth = (sourcePoint.zDepth + targetPoint.zDepth) / 2;
+                    links.push({ first: sourcePoint, second: targetPoint, distance, real: true, isSelected, edgeDepth, edgeEmergeAlpha });
                 }
             }
         } else {
@@ -734,25 +963,29 @@
                 const first = activePoints[left];
                 const second = activePoints[right];
                 const distance = Math.hypot(first.x - second.x, first.y - second.y);
-                if (distance < 140 + progress * 50) links.push({ first, second, distance, isSelected: false });
+                if (distance < 140 + progress * 50) links.push({ first, second, distance, isSelected: false, edgeEmergeAlpha: 1 });
               }
             }
         }
 
+        // Global scale and rotation for cinematic feel
+        const globalScale = 1 + progress * 0.15;
         const rotation = (progress - .5) * .16;
+        
         context.save();
         context.translate(width / 2, height / 2);
         context.rotate(rotation);
+        context.scale(globalScale, globalScale);
         context.translate(-width / 2, -height / 2);
         
         for (const link of links) {
-          let alpha = realGraph ? (.16 + progress * .25) : (1 - link.distance / (190 + progress * 40)) * (.16 + progress * .18);
+          let alpha = realGraph ? (0.1 + link.edgeDepth * 0.05 + progress * 0.15) * link.edgeEmergeAlpha : (1 - link.distance / (190 + progress * 40)) * (.16 + progress * .18);
           
           if (selectedNodeId && realGraph) {
              if (link.isSelected) {
-                 alpha = 0.6;
+                 alpha = 0.7;
              } else {
-                 alpha *= 0.2; // fade out others
+                 alpha *= 0.15;
              }
           }
           
@@ -776,41 +1009,60 @@
           
           let opacity = point.opacity;
           if (isSelected) opacity = 1;
-          if (isDimmed) opacity *= 0.3;
+          if (isDimmed) opacity *= 0.25;
           
           let fillStyle = `rgba(141, 228, 226, ${opacity})`;
-          if (!realGraph && (index % 7 === 0 || progress > .72 && index % 5 === 0)) {
-              fillStyle = `rgba(229, 185, 107, ${opacity})`;
-          } else if (realGraph && point.originalNode) {
-              if (point.originalNode.kind && point.originalNode.kind.startsWith('metadata:')) {
-                  fillStyle = `rgba(229, 185, 107, ${opacity})`;
+          
+          if (!realGraph) {
+              if (index % 7 === 0 || progress > .72 && index % 5 === 0) fillStyle = `rgba(229, 185, 107, ${opacity})`;
+          } else {
+              // Semantic visual shapes and colors based on kind
+              if (point.kindGroup === 'back') {
+                  fillStyle = `rgba(139, 154, 165, ${opacity * 0.7})`; // muted
+              } else if (point.kindGroup === 'fore') {
+                  fillStyle = `rgba(141, 228, 226, ${opacity})`; // cyan glow
+              } else {
+                  fillStyle = `rgba(229, 185, 107, ${opacity})`; // amber for standard modules
               }
-              if (isSelected) {
-                  fillStyle = `rgba(255, 255, 255, 1)`;
-              }
+              
+              if (isSelected) fillStyle = `rgba(255, 255, 255, 1)`;
           }
           
           context.fillStyle = fillStyle;
           context.beginPath();
-          context.arc(point.x, point.y, radius, 0, Math.PI * 2);
-          context.fill();
+          
+          // Render different shapes based on semantic importance
+          if (realGraph && point.kindGroup === 'fore' && progress > 0.3) {
+              // Draw a prominent diamond/square for important structural nodes
+              context.moveTo(point.x, point.y - radius * 1.5);
+              context.lineTo(point.x + radius * 1.5, point.y);
+              context.lineTo(point.x, point.y + radius * 1.5);
+              context.lineTo(point.x - radius * 1.5, point.y);
+              context.fill();
+          } else {
+              context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+              context.fill();
+          }
           
           if (isSelected) {
-              context.fillStyle = `rgba(141, 228, 226, 0.4)`;
+              context.fillStyle = `rgba(141, 228, 226, 0.3)`;
               context.beginPath();
-              context.arc(point.x, point.y, radius * 2.5, 0, Math.PI * 2);
+              context.arc(point.x, point.y, radius * 3, 0, Math.PI * 2);
               context.fill();
           }
 
-          if (realGraph && point.originalNode && (progress > 0.4 || isSelected)) {
-              const node = point.originalNode;
-              let textAlpha = clamp((progress - 0.4) * 2, 0, 1) * opacity;
+          // Render labels
+          if (realGraph && point.originalNode && (progress > 0.5 || isSelected)) {
+              // Labels emerge in VERIFY and ENTER
+              let textAlpha = clamp((progress - 0.5) * 2, 0, 1) * opacity;
               if (isSelected) textAlpha = 1;
+              if (point.kindGroup === 'back' && !isSelected) textAlpha *= 0.5; // push metadata text back
+              
               if (textAlpha > 0) {
                 context.fillStyle = isSelected ? `rgba(255, 255, 255, 1)` : `rgba(232, 238, 243, ${textAlpha})`;
                 context.font = isSelected ? 'bold 11px ui-monospace, SFMono-Regular, Consolas, monospace' : '10px ui-monospace, SFMono-Regular, Consolas, monospace';
-                const label = node.name || node.id.split(':').pop();
-                context.fillText(label, point.x + (isSelected ? 12 : 8), point.y + 3);
+                const label = point.originalNode.name || point.originalNode.id.split(':').pop();
+                context.fillText(label, point.x + (isSelected ? 14 : 8), point.y + 4);
               }
           }
         }
@@ -831,9 +1083,12 @@
           const clickX = event.clientX - rect.left;
           const clickY = event.clientY - rect.top;
           
+          // Inverse cinematic transform
+          const globalScale = 1 + progress * 0.15;
           const rotation = (progress - .5) * .16;
-          const dx = clickX - (width / 2);
-          const dy = clickY - (height / 2);
+          
+          const dx = (clickX - (width / 2)) / globalScale;
+          const dy = (clickY - (height / 2)) / globalScale;
           
           const cos = Math.cos(-rotation);
           const sin = Math.sin(-rotation);
@@ -844,7 +1099,7 @@
           const targetY = ry + (height / 2);
           
           let closestNode = null;
-          let minDistance = 20; 
+          let minDistance = 25; 
           
           const activePoints = [];
           for (let index = 0; index < count; index += 1) {
