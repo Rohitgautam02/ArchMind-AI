@@ -479,10 +479,52 @@
       <p class="analysis-state" id="analysis-state" data-state="READY">READY / local runtime connected</p>
       <div class="analysis-result" id="analysis-result" hidden>
         <p class="analysis-result-meta" id="analysis-result-meta"></p>
-        <pre id="analysis-report"></pre>
+        <h3 style="margin: 0; color: var(--cyan); font-weight: 400; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase;">Analysis Complete</h3>
       </div>
     </section>
+    
+    <div id="node-inspector" class="node-inspector" hidden>
+      <div class="inspector-id" id="inspector-id"></div>
+      <div class="inspector-detail"><span class="inspector-label">KIND</span> <span id="inspector-kind"></span></div>
+      <div class="inspector-detail" id="inspector-confidence-row"><span class="inspector-label">CONFIDENCE</span> <span id="inspector-confidence"></span></div>
+      <div class="inspector-detail"><span class="inspector-label">EDGES</span> <span id="inspector-edges"></span></div>
+    </div>
   </main>
+
+  <style>
+    .node-inspector {
+      position: fixed;
+      z-index: 100;
+      top: 50%;
+      left: 50%;
+      transform: translate(20px, -50%);
+      pointer-events: none;
+      background: rgba(11, 17, 23, .85);
+      border: 1px solid var(--line);
+      border-left: 2px solid var(--cyan);
+      padding: 16px 20px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+      min-width: 220px;
+      animation: rise .3s cubic-bezier(.22, 1, .36, 1) both;
+    }
+    .inspector-id {
+      color: var(--ink);
+      font: 500 13px ui-monospace, SFMono-Regular, Consolas, monospace;
+      margin-bottom: 12px;
+      word-break: break-all;
+    }
+    .inspector-detail {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 6px;
+      color: #c8d5d9;
+      font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .inspector-detail:last-child { margin-bottom: 0; }
+    .inspector-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+  </style>
 
   <script>
     (() => {
@@ -496,7 +538,7 @@
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const points = [];
       const links = [];
-      const count = 58;
+      let count = 58;
       const layouts = [];
       const names = ['scan', 'reason', 'verify', 'enter'];
       let width = 0;
@@ -506,8 +548,26 @@
       let progress = 0;
       let targetProgress = 0;
       let lastFrame = 0;
+      
+      let realGraph = null;
+      let selectedNodeId = null;
+      
+      const inspector = document.getElementById('node-inspector');
+      const inspectorId = document.getElementById('inspector-id');
+      const inspectorKind = document.getElementById('inspector-kind');
+      const inspectorConfidenceRow = document.getElementById('inspector-confidence-row');
+      const inspectorConfidence = document.getElementById('inspector-confidence');
+      const inspectorEdges = document.getElementById('inspector-edges');
 
-      function makeLayout(stageIndex) {
+      function stableHash(str) {
+        let hash = 5381;
+        for (let i = 0; i < str.length; i++) {
+          hash = ((hash << 5) + hash) + str.charCodeAt(i); /* hash * 33 + c */
+        }
+        return (hash >>> 0);
+      }
+
+      function makeProceduralLayout(stageIndex) {
         const layout = [];
         for (let index = 0; index < count; index += 1) {
           const angle = (index / count) * Math.PI * 2;
@@ -532,6 +592,55 @@
         return layout;
       }
 
+      function makeRealLayout(nodes, stageIndex) {
+        const layout = [];
+        const n = nodes.length;
+        if (n === 0) return layout;
+
+        const maxRadius = 0.38;
+
+        for (let index = 0; index < n; index += 1) {
+          const node = nodes[index];
+          const hash = stableHash(node.id);
+          
+          // Use hash to deterministically place, but keep it structured so it spreads out
+          // Map hash to a deterministic index for spiral
+          const deterministicIndex = hash % Math.max(n * 2, 100);
+          
+          const goldenRatio = (1 + Math.sqrt(5)) / 2;
+          const angleIncrement = Math.PI * 2 * goldenRatio;
+          
+          // distance based on hash modulo to create a spread, avoiding center clump
+          const distanceNormalized = ((hash % 100) / 100);
+          const distance = 0.05 + distanceNormalized * maxRadius; 
+          const angle = deterministicIndex * angleIncrement;
+          
+          let x = 0.5 + Math.cos(angle) * distance;
+          let y = 0.5 + Math.sin(angle) * distance;
+          
+          if (stageIndex === 0) {
+             x = x + Math.cos(angle) * 0.15;
+             y = y + Math.sin(angle) * 0.15;
+          } else if (stageIndex === 1) {
+             x = x + Math.cos(angle) * 0.05;
+             y = y + Math.sin(angle) * 0.05;
+          }
+
+          let scale = 1;
+          if (node.confidence !== undefined) {
+             scale = 0.6 + (node.confidence * 0.6);
+          }
+
+          layout.push({
+            x, y,
+            scale: scale * (stageIndex === 0 ? 0.7 : 1),
+            opacity: stageIndex === 0 ? 0.3 : 1,
+            originalNode: node
+          });
+        }
+        return layout;
+      }
+
       function resize() {
         const ratio = Math.min(window.devicePixelRatio || 1, 2);
         width = canvas.clientWidth;
@@ -540,7 +649,13 @@
         canvas.height = height * ratio;
         context.setTransform(ratio, 0, 0, ratio, 0, 0);
         layouts.length = 0;
-        for (let index = 0; index < 4; index += 1) layouts.push(makeLayout(index));
+        if (realGraph) {
+            count = realGraph.nodes.length;
+            for (let index = 0; index < 4; index += 1) layouts.push(makeRealLayout(realGraph.nodes, index));
+        } else {
+            count = 58;
+            for (let index = 0; index < 4; index += 1) layouts.push(makeProceduralLayout(index));
+        }
       }
 
       function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
@@ -559,6 +674,7 @@
           y: mix(from.y, to.y, local) * height + pointerY * (14 + depth) + Math.sin(lastFrame * .0003 + index) * (2 + progress * 8),
           scale: mix(from.scale, to.scale, local),
           opacity: mix(from.opacity, to.opacity, local),
+          originalNode: from ? from.originalNode : null
         };
       }
 
@@ -584,40 +700,121 @@
         progress += (targetProgress - progress) * delta;
         updateNarrative();
         context.clearRect(0, 0, width, height);
+        
+        if (count === 0) {
+            if (!reduceMotion) window.requestAnimationFrame(draw);
+            return;
+        }
+
         const activePoints = [];
         for (let index = 0; index < count; index += 1) activePoints.push(samplePoint(index));
         links.length = 0;
-        const connectionLimit = 62 + Math.floor(progress * 44);
-        for (let left = 0; left < activePoints.length; left += 1) {
-          for (let right = left + 1; right < activePoints.length && links.length < connectionLimit; right += 1) {
-            const first = activePoints[left];
-            const second = activePoints[right];
-            const distance = Math.hypot(first.x - second.x, first.y - second.y);
-            if (distance < 140 + progress * 50) links.push({ first, second, distance });
-          }
+        
+        if (realGraph) {
+            for (const edge of realGraph.edges) {
+                const sourceIdx = realGraph.nodes.findIndex(n => n.id === edge.source);
+                const targetIdx = realGraph.nodes.findIndex(n => n.id === edge.target);
+                if (sourceIdx >= 0 && targetIdx >= 0) {
+                    const first = activePoints[sourceIdx];
+                    const second = activePoints[targetIdx];
+                    const distance = Math.hypot(first.x - second.x, first.y - second.y);
+                    
+                    let isSelected = false;
+                    if (selectedNodeId && (first.originalNode.id === selectedNodeId || second.originalNode.id === selectedNodeId)) {
+                        isSelected = true;
+                    }
+                    
+                    links.push({ first, second, distance, real: true, isSelected });
+                }
+            }
+        } else {
+            const connectionLimit = 62 + Math.floor(progress * 44);
+            for (let left = 0; left < activePoints.length; left += 1) {
+              for (let right = left + 1; right < activePoints.length && links.length < connectionLimit; right += 1) {
+                const first = activePoints[left];
+                const second = activePoints[right];
+                const distance = Math.hypot(first.x - second.x, first.y - second.y);
+                if (distance < 140 + progress * 50) links.push({ first, second, distance, isSelected: false });
+              }
+            }
         }
+
         const rotation = (progress - .5) * .16;
         context.save();
         context.translate(width / 2, height / 2);
         context.rotate(rotation);
         context.translate(-width / 2, -height / 2);
+        
         for (const link of links) {
-          const alpha = (1 - link.distance / (190 + progress * 40)) * (.16 + progress * .18);
-          context.strokeStyle = `rgba(141, 228, 226, ${alpha})`;
-          context.lineWidth = progress > .62 && link.distance < 98 ? 1.1 : .6;
-          context.beginPath();
-          context.moveTo(link.first.x, link.first.y);
-          context.lineTo(link.second.x, link.second.y);
-          context.stroke();
+          let alpha = realGraph ? (.16 + progress * .25) : (1 - link.distance / (190 + progress * 40)) * (.16 + progress * .18);
+          
+          if (selectedNodeId && realGraph) {
+             if (link.isSelected) {
+                 alpha = 0.6;
+             } else {
+                 alpha *= 0.2; // fade out others
+             }
+          }
+          
+          if (alpha > 0) {
+              context.strokeStyle = `rgba(141, 228, 226, ${alpha})`;
+              context.lineWidth = link.isSelected ? 1.5 : ((progress > .62 && link.distance < 98) || realGraph ? 1.1 : .6);
+              context.beginPath();
+              context.moveTo(link.first.x, link.first.y);
+              context.lineTo(link.second.x, link.second.y);
+              context.stroke();
+          }
         }
+        
         for (let index = 0; index < activePoints.length; index += 1) {
           const point = activePoints[index];
-          const radius = (1 + (index % 4) * .6) * point.scale;
-          context.fillStyle = index % 7 === 0 || progress > .72 && index % 5 === 0 ? `rgba(229, 185, 107, ${point.opacity})` : `rgba(141, 228, 226, ${point.opacity})`;
+          const isSelected = selectedNodeId && point.originalNode && point.originalNode.id === selectedNodeId;
+          const isDimmed = selectedNodeId && !isSelected;
+          
+          let radius = realGraph ? (3 * point.scale) : (1 + (index % 4) * .6) * point.scale;
+          if (isSelected) radius *= 1.5;
+          
+          let opacity = point.opacity;
+          if (isSelected) opacity = 1;
+          if (isDimmed) opacity *= 0.3;
+          
+          let fillStyle = `rgba(141, 228, 226, ${opacity})`;
+          if (!realGraph && (index % 7 === 0 || progress > .72 && index % 5 === 0)) {
+              fillStyle = `rgba(229, 185, 107, ${opacity})`;
+          } else if (realGraph && point.originalNode) {
+              if (point.originalNode.kind && point.originalNode.kind.startsWith('metadata:')) {
+                  fillStyle = `rgba(229, 185, 107, ${opacity})`;
+              }
+              if (isSelected) {
+                  fillStyle = `rgba(255, 255, 255, 1)`;
+              }
+          }
+          
+          context.fillStyle = fillStyle;
           context.beginPath();
           context.arc(point.x, point.y, radius, 0, Math.PI * 2);
           context.fill();
+          
+          if (isSelected) {
+              context.fillStyle = `rgba(141, 228, 226, 0.4)`;
+              context.beginPath();
+              context.arc(point.x, point.y, radius * 2.5, 0, Math.PI * 2);
+              context.fill();
+          }
+
+          if (realGraph && point.originalNode && (progress > 0.4 || isSelected)) {
+              const node = point.originalNode;
+              let textAlpha = clamp((progress - 0.4) * 2, 0, 1) * opacity;
+              if (isSelected) textAlpha = 1;
+              if (textAlpha > 0) {
+                context.fillStyle = isSelected ? `rgba(255, 255, 255, 1)` : `rgba(232, 238, 243, ${textAlpha})`;
+                context.font = isSelected ? 'bold 11px ui-monospace, SFMono-Regular, Consolas, monospace' : '10px ui-monospace, SFMono-Regular, Consolas, monospace';
+                const label = node.name || node.id.split(':').pop();
+                context.fillText(label, point.x + (isSelected ? 12 : 8), point.y + 3);
+              }
+          }
         }
+        
         context.restore();
         if (!reduceMotion) window.requestAnimationFrame(draw);
       }
@@ -626,6 +823,71 @@
         const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
         targetProgress = clamp(window.scrollY / maxScroll, 0, 1);
       }
+      
+      canvas.addEventListener('click', (event) => {
+          if (!realGraph || count === 0) return;
+          
+          const rect = canvas.getBoundingClientRect();
+          const clickX = event.clientX - rect.left;
+          const clickY = event.clientY - rect.top;
+          
+          const rotation = (progress - .5) * .16;
+          const dx = clickX - (width / 2);
+          const dy = clickY - (height / 2);
+          
+          const cos = Math.cos(-rotation);
+          const sin = Math.sin(-rotation);
+          const rx = dx * cos - dy * sin;
+          const ry = dx * sin + dy * cos;
+          
+          const targetX = rx + (width / 2);
+          const targetY = ry + (height / 2);
+          
+          let closestNode = null;
+          let minDistance = 20; 
+          
+          const activePoints = [];
+          for (let index = 0; index < count; index += 1) {
+              activePoints.push(samplePoint(index));
+          }
+          
+          for (const point of activePoints) {
+              const dist = Math.hypot(point.x - targetX, point.y - targetY);
+              if (dist < minDistance) {
+                  minDistance = dist;
+                  closestNode = point.originalNode;
+              }
+          }
+          
+          if (closestNode) {
+              selectedNodeId = closestNode.id;
+              
+              inspectorId.textContent = closestNode.id;
+              inspectorKind.textContent = closestNode.kind || 'UNKNOWN';
+              
+              if (closestNode.confidence !== undefined) {
+                  inspectorConfidence.textContent = closestNode.confidence.toFixed(2);
+                  inspectorConfidenceRow.style.display = 'flex';
+              } else {
+                  inspectorConfidenceRow.style.display = 'none';
+              }
+              
+              let edgeCount = 0;
+              for (const edge of realGraph.edges) {
+                  if (edge.source === closestNode.id || edge.target === closestNode.id) {
+                      edgeCount++;
+                  }
+              }
+              inspectorEdges.textContent = edgeCount.toString();
+              
+              inspector.style.top = `${event.clientY}px`;
+              inspector.style.left = `${event.clientX}px`;
+              inspector.hidden = false;
+          } else {
+              selectedNodeId = null;
+              inspector.hidden = true;
+          }
+      });
 
       window.addEventListener('resize', resize);
       window.addEventListener('pointermove', (event) => {
@@ -643,7 +905,6 @@
       const state = document.getElementById('analysis-state');
       const result = document.getElementById('analysis-result');
       const resultMeta = document.getElementById('analysis-result-meta');
-      const report = document.getElementById('analysis-report');
 
       function setState(value, message) {
         state.dataset.state = value;
@@ -667,7 +928,9 @@
         const button = form.querySelector('button');
         button.disabled = true;
         result.hidden = true;
-        setState('ANALYZING', 'scanning repository and reviewing evidence');
+        inspector.hidden = true;
+        selectedNodeId = null;
+        setState('ANALYZING', 'initiating analysis');
 
         try {
           const response = await fetch('/api/analyze', {
@@ -676,11 +939,36 @@
             body: JSON.stringify({ repositoryPath }),
           });
           const payload = await response.json();
-          if (!response.ok || !payload.success) throw new Error(payload.error || 'Analysis failed');
+          if (!response.ok || !payload.success) throw new Error(payload.error || 'Analysis failed to start');
 
-          setState('COMPLETE', 'evidence-backed report ready');
-          resultMeta.textContent = `RUN ${payload.runId || 'unavailable'} / ${payload.reportPath || 'report path unavailable'}`;
-          report.textContent = payload.reportContent || 'The runtime completed without report content.';
+          const runId = payload.runId;
+          let runStatus = 'ANALYZING';
+          
+          while (runStatus === 'ANALYZING' || runStatus === 'CREATED') {
+              setState(runStatus, `run in progress...`);
+              await new Promise(r => setTimeout(r, 1000));
+              const runRes = await fetch(`/api/run/${runId}`);
+              const runPayload = await runRes.json();
+              if (runRes.ok && runPayload.success) {
+                  runStatus = runPayload.run.status;
+              } else {
+                  throw new Error('Failed to get run status');
+              }
+          }
+          
+          if (runStatus === 'FAILED') throw new Error('Analysis run failed');
+          
+          setState('FETCHING', 'retrieving architecture graph');
+          
+          const graphRes = await fetch(`/api/graph/${runId}`);
+          const graphPayload = await graphRes.json();
+          if (!graphRes.ok || !graphPayload.success) throw new Error('Failed to load graph');
+          
+          realGraph = graphPayload.graph;
+          resize();
+          
+          setState('COMPLETE', `rendered ${realGraph.nodes.length} nodes from ${runId}`);
+          resultMeta.textContent = `RUN ${runId} / ${realGraph.nodes.length} NODES / ${realGraph.edges.length} EDGES`;
           result.hidden = false;
         } catch (error) {
           setState('ERROR', error instanceof Error ? error.message : 'local analysis failed');
