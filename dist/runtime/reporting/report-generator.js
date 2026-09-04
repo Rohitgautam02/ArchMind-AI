@@ -25,18 +25,29 @@ export class ReportGenerator {
         }
         // Extract dependency health
         const depNode = snapshot.nodes.find(n => n.kind === 'analysis:dependency-health');
-        if (depNode && depNode.value) {
+        const dependencyHealth = depNode ? dependencyHealthValue(depNode.value) : undefined;
+        if (dependencyHealth) {
             markdown += `## Dependency Health\n`;
-            const val = depNode.value;
-            markdown += `- **Health Score**: ${val.healthScore}/100\n`;
-            if (val.unusedPackages?.length > 0) {
-                markdown += `- **Unused Packages**: ${val.unusedPackages.join(', ')}\n`;
+            markdown += `- **Health Score**: ${dependencyHealth.healthScore}/100\n`;
+            if (dependencyHealth.unusedPackages.length > 0) {
+                markdown += `- **Unused Packages**: ${dependencyHealth.unusedPackages.join(', ')}\n`;
             }
-            if (val.duplicateDependencies?.length > 0) {
-                markdown += `- **Duplicate Dependencies**: ${val.duplicateDependencies.join(', ')}\n`;
+            if (dependencyHealth.risks.length > 0) {
+                markdown += `- **Risks identified**: ${dependencyHealth.risks.length}\n`;
             }
-            if (val.risks?.length > 0) {
-                markdown += `- **Risks identified**: ${val.risks.length}\n`;
+            this.#appendDependencyUsage(dependencyHealth.directDependencyUsage, (line) => {
+                markdown += line;
+            });
+            this.#appendResolvedDependencies(dependencyHealth.resolvedDependencies, (line) => {
+                markdown += line;
+            });
+            this.#appendDuplicateVersions(dependencyHealth.duplicateVersions, (line) => {
+                markdown += line;
+            });
+            const supportingEvidenceIds = depNode ? this.#supportingEvidenceIds(depNode) : [];
+            if (supportingEvidenceIds.length > 0) {
+                markdown += `### Supporting Evidence\n`;
+                markdown += `- **Evidence IDs**: ${supportingEvidenceIds.map((id) => `\`${this.#escape(id)}\``).join(', ')}\n`;
             }
             markdown += `\n`;
         }
@@ -53,4 +64,121 @@ export class ReportGenerator {
     static #escape(str) {
         return str.replace(/\|/g, '\\|').replace(/\n/g, ' ');
     }
+    static #appendDependencyUsage(usage, append) {
+        const sections = [
+            ['Declared and imported', usage.declaredAndImported],
+            ['Declared but not imported', usage.declaredButNotImported],
+        ];
+        for (const [title, findings] of sections) {
+            if (findings.length === 0)
+                continue;
+            append(`### ${title}\n`);
+            for (const finding of findings) {
+                const details = ` (${finding.dependencyType})`;
+                append(`- **${title}**: ${this.#escape(finding.package)}${details}`);
+                append(` ${this.#escape(finding.version)}`);
+                const evidenceIds = finding.supportingEvidenceIds;
+                if (evidenceIds.length > 0)
+                    append(` [evidence: ${evidenceIds.map((id) => this.#escape(id)).join(', ')}]`);
+                append(`\n`);
+            }
+        }
+        if (usage.importedButUndeclared.length > 0) {
+            const title = 'Imported but undeclared';
+            append(`### ${title}\n`);
+            for (const finding of usage.importedButUndeclared) {
+                append(`- **${title}**: ${this.#escape(finding.package)}`);
+                const evidenceIds = finding.supportingEvidenceIds;
+                if (evidenceIds.length > 0)
+                    append(` [evidence: ${evidenceIds.map((id) => this.#escape(id)).join(', ')}]`);
+                append(`\n`);
+            }
+        }
+    }
+    static #appendResolvedDependencies(dependencies, append) {
+        if (dependencies.length === 0)
+            return;
+        append(`### Resolved Dependencies\n`);
+        for (const dependency of dependencies) {
+            const declared = dependency.declaredVersion ? ` declared ${this.#escape(dependency.declaredVersion)}` : '';
+            const type = dependency.dependencyType ? ` (${dependency.dependencyType})` : '';
+            const scope = dependency.isDirect ? 'direct' : 'transitive';
+            append(`- **${this.#escape(dependency.package)}**: ${declared} resolved ${this.#escape(dependency.resolvedVersion)} (${scope}${type}) at \`${this.#escape(dependency.location)}\` [evidence: ${dependency.supportingEvidenceIds.map((id) => this.#escape(id)).join(', ')}]\n`);
+        }
+    }
+    static #appendDuplicateVersions(duplicates, append) {
+        if (duplicates.length === 0)
+            return;
+        append(`### Duplicate Resolved Versions\n`);
+        for (const duplicate of duplicates) {
+            append(`- **${this.#escape(duplicate.package)}**: versions ${duplicate.versions.map((version) => this.#escape(version)).join(', ')} at ${duplicate.locations.map((location) => `\`${this.#escape(location)}\``).join(', ')} [evidence: ${duplicate.supportingEvidenceIds.map((id) => this.#escape(id)).join(', ')}]\n`);
+        }
+    }
+    static #supportingEvidenceIds(node) {
+        return [...new Set(node.provenance.flatMap((provenance) => provenance.supportingEvidenceIds ?? []))]
+            .sort((left, right) => left.localeCompare(right));
+    }
+}
+function dependencyHealthValue(value) {
+    if (!isRecord(value)
+        || typeof value.healthScore !== 'number'
+        || !isStringArray(value.unusedPackages)
+        || !Array.isArray(value.risks)
+        || !isRecord(value.directDependencyUsage)
+        || !isUsageArray(value.directDependencyUsage.declaredAndImported)
+        || !isUsageArray(value.directDependencyUsage.declaredButNotImported)
+        || !isImportedArray(value.directDependencyUsage.importedButUndeclared)
+        || !Array.isArray(value.resolvedDependencies)
+        || !value.resolvedDependencies.every(isResolvedDependency)
+        || !Array.isArray(value.duplicateVersions)
+        || !value.duplicateVersions.every(isDuplicateVersion)) {
+        return undefined;
+    }
+    return {
+        healthScore: value.healthScore,
+        unusedPackages: value.unusedPackages,
+        risks: value.risks,
+        directDependencyUsage: {
+            declaredAndImported: value.directDependencyUsage.declaredAndImported,
+            declaredButNotImported: value.directDependencyUsage.declaredButNotImported,
+            importedButUndeclared: value.directDependencyUsage.importedButUndeclared,
+        },
+        resolvedDependencies: value.resolvedDependencies,
+        duplicateVersions: value.duplicateVersions,
+    };
+}
+function isRecord(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+function isStringArray(value) {
+    return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+function isUsageArray(value) {
+    return Array.isArray(value) && value.every((item) => isRecord(item)
+        && typeof item.package === 'string'
+        && typeof item.version === 'string'
+        && typeof item.dependencyType === 'string'
+        && isStringArray(item.supportingEvidenceIds));
+}
+function isImportedArray(value) {
+    return Array.isArray(value) && value.every((item) => isRecord(item)
+        && typeof item.package === 'string'
+        && isStringArray(item.supportingEvidenceIds));
+}
+function isResolvedDependency(value) {
+    return isRecord(value)
+        && typeof value.package === 'string'
+        && typeof value.resolvedVersion === 'string'
+        && typeof value.location === 'string'
+        && typeof value.isDirect === 'boolean'
+        && (value.declaredVersion === undefined || typeof value.declaredVersion === 'string')
+        && (value.dependencyType === undefined || typeof value.dependencyType === 'string')
+        && isStringArray(value.supportingEvidenceIds);
+}
+function isDuplicateVersion(value) {
+    return isRecord(value)
+        && typeof value.package === 'string'
+        && isStringArray(value.versions)
+        && isStringArray(value.locations)
+        && isStringArray(value.supportingEvidenceIds);
 }

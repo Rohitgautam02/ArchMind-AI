@@ -1,14 +1,17 @@
-import { createReadStream, existsSync, promises as fs } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { tmpdir } from 'node:os';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)));
-const cliPath = join(root, 'dist', 'cli', 'index.js');
 const port = Number(process.env.PORT || 4173);
 const contentTypes = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8' };
+
+// Import the compiled AnalysisService from dist
+const { AnalysisService } = await import('./dist/runtime/analysis-service.js');
+
+/** @type {import('./dist/runtime/analysis-service.js').AnalysisService} */
+const analysisService = new AnalysisService();
 
 function sendJson(response, status, payload) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -31,50 +34,31 @@ async function readJson(request) {
   return value.repositoryPath.trim();
 }
 
-async function runAnalysis(repositoryPath) {
-  const targetPath = resolve(repositoryPath);
-  if (!existsSync(targetPath)) throw new Error('The local repository path does not exist.');
-  if (!existsSync(cliPath)) throw new Error('ArchMind CLI build is unavailable. Run npm run build first.');
-
-  const reportPath = join(tmpdir(), `archmind-report-${Date.now()}.md`);
-  return await new Promise((resolveResult, reject) => {
-    const child = spawn(process.execPath, [cliPath, 'analyze', targetPath, '--output', reportPath], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', reject);
-    child.on('close', async (code) => {
-      if (code !== 0) {
-        reject(new Error(stderr.trim() || stdout.trim() || `ArchMind exited with code ${code ?? 'unknown'}.`));
-        return;
-      }
-      try {
-        const reportContent = await fs.readFile(reportPath, 'utf8');
-        resolveResult({ success: true, reportPath, reportContent, runtimeOutput: stdout });
-      } catch (error) {
-        reject(error);
-      }
-    });
-  });
+/**
+ * Extract :runId from a URL pattern like /api/graph/:runId or /api/run/:runId
+ * @param {string} url
+ * @param {string} prefix - e.g. '/api/graph/' or '/api/run/'
+ * @returns {string|null}
+ */
+function extractRunId(url, prefix) {
+  if (!url.startsWith(prefix)) return null;
+  const runId = url.slice(prefix.length).replace(/\/$/, '');
+  return runId.length > 0 ? runId : null;
 }
 
 const server = createServer(async (request, response) => {
   try {
-    if (request.method === 'GET' && (request.url === '/' || request.url === '/index.html')) {
+    const url = request.url || '/';
+
+    // --- Static routes ---
+
+    if (request.method === 'GET' && (url === '/' || url === '/index.html')) {
       serveIndex(response);
       return;
     }
 
-    if (request.method === 'POST' && request.url === '/api/analyze') {
-      const repositoryPath = await readJson(request);
-      const result = await runAnalysis(repositoryPath);
-      sendJson(response, 200, result);
-      return;
-    }
-
-    if (request.method === 'GET' && request.url?.startsWith('/assets/')) {
-      const relativePath = normalize(request.url.slice('/assets/'.length));
+    if (request.method === 'GET' && url.startsWith('/assets/')) {
+      const relativePath = normalize(url.slice('/assets/'.length));
       const assetPath = resolve(join(root, 'assets', relativePath));
       if (!assetPath.startsWith(resolve(join(root, 'assets')))) {
         sendJson(response, 403, { success: false, error: 'Forbidden.' });
@@ -89,6 +73,63 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    // --- API routes ---
+
+    // POST /api/analyze
+    if (request.method === 'POST' && url === '/api/analyze') {
+      if (analysisService.analyzing) {
+        sendJson(response, 409, { success: false, error: 'Analysis already running.' });
+        return;
+      }
+
+      const repositoryPath = await readJson(request);
+      const result = await analysisService.analyze(repositoryPath);
+      sendJson(response, 200, { success: true, runId: result.runId });
+      return;
+    }
+
+    // GET /api/runs
+    if (request.method === 'GET' && url === '/api/runs') {
+      const runs = analysisService.listRuns();
+      sendJson(response, 200, { success: true, runs });
+      return;
+    }
+
+    // GET /api/run/:runId
+    if (request.method === 'GET' && url.startsWith('/api/run/')) {
+      const runId = extractRunId(url, '/api/run/');
+      if (!runId) {
+        sendJson(response, 400, { success: false, error: 'Missing runId.' });
+        return;
+      }
+
+      const run = analysisService.getRun(runId);
+      if (!run) {
+        sendJson(response, 404, { success: false, error: 'Run not found.' });
+        return;
+      }
+      sendJson(response, 200, { success: true, run });
+      return;
+    }
+
+    // GET /api/graph/:runId
+    if (request.method === 'GET' && url.startsWith('/api/graph/')) {
+      const runId = extractRunId(url, '/api/graph/');
+      if (!runId) {
+        sendJson(response, 400, { success: false, error: 'Missing runId.' });
+        return;
+      }
+
+      const graph = analysisService.getGraph(runId);
+      if (!graph) {
+        sendJson(response, 404, { success: false, error: 'Run not found.' });
+        return;
+      }
+      sendJson(response, 200, { success: true, graph });
+      return;
+    }
+
+    // --- Fallback ---
     sendJson(response, 404, { success: false, error: 'Not found.' });
   } catch (error) {
     sendJson(response, 400, { success: false, error: error instanceof Error ? error.message : 'Local analysis failed.' });

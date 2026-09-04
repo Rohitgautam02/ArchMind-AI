@@ -53,10 +53,16 @@ export class AgentRuntime {
                 runId: input.runId,
                 external: false,
             };
-            const nodesWithProvenance = agentOutput.nodes.map(node => ({
-                ...node,
-                provenance: [provenance],
-            }));
+            const nodesWithProvenance = agentOutput.nodes.map(node => {
+                const supportingEvidenceIds = [...new Set(node.provenance.flatMap((item) => item.supportingEvidenceIds ?? []))].sort((left, right) => left.localeCompare(right));
+                const runtimeProvenance = supportingEvidenceIds.length > 0
+                    ? { ...provenance, supportingEvidenceIds }
+                    : provenance;
+                return {
+                    ...node,
+                    provenance: [runtimeProvenance],
+                };
+            });
             this.#evidenceGraph.apply({
                 provenance,
                 nodes: nodesWithProvenance,

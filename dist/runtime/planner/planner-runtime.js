@@ -39,9 +39,6 @@ export class PlannerRuntime {
                     const workItem = this.#scheduler.schedule(rule.targetCapability, implementation, graphSnapshot);
                     workItems.push(workItem);
                 }
-                else {
-                    console.log(`Planner: Capability ${rule.targetCapability} required but no implementation resolved.`);
-                }
             }
         }
         const executionPlan = this.#freezePlan({

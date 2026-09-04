@@ -35,7 +35,7 @@ export const architectureAgentDefinition = {
         });
         const architectureDetected = Object.freeze({
             id: architectureNodeId,
-            kind: 'signal',
+            kind: 'ArchitectureDetected',
             label: 'ArchitectureDetected',
             value: { architecture: result.architecture, deterministic: false },
             confidence: { score: 0.98, source: 'derived', rationale: result.rationale },
@@ -43,7 +43,7 @@ export const architectureAgentDefinition = {
         });
         const moduleBoundaryDetected = Object.freeze({
             id: boundaryNodeId,
-            kind: 'signal',
+            kind: 'ModuleBoundaryDetected',
             label: 'ModuleBoundaryDetected',
             value: { boundaries: result.boundaries },
             confidence: { score: 0.97, source: 'derived', rationale: 'Derived from LLM output' },
