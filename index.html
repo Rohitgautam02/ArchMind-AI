@@ -483,47 +483,127 @@
       </div>
     </section>
     
-    <div id="node-inspector" class="node-inspector" hidden>
-      <div class="inspector-id" id="inspector-id"></div>
-      <div class="inspector-detail"><span class="inspector-label">KIND</span> <span id="inspector-kind"></span></div>
-      <div class="inspector-detail" id="inspector-confidence-row"><span class="inspector-label">CONFIDENCE</span> <span id="inspector-confidence"></span></div>
-      <div class="inspector-detail"><span class="inspector-label">EDGES</span> <span id="inspector-edges"></span></div>
+    <div id="evidence-lens" class="evidence-lens" hidden>
+      <div class="lens-section">
+        <div class="lens-node-label" id="lens-label"></div>
+        <div class="lens-row"><span class="lens-key">KIND</span><span class="lens-val" id="lens-kind"></span></div>
+        <div class="lens-row lens-id-row"><span class="lens-key">ID</span><span class="lens-val lens-id-val" id="lens-id"></span></div>
+      </div>
+      <div class="lens-section" id="lens-confidence-section" hidden>
+        <div class="lens-row"><span class="lens-key">CONFIDENCE</span><span class="lens-val" id="lens-confidence-score"></span></div>
+        <div class="lens-row"><span class="lens-key">SOURCE</span><span class="lens-val" id="lens-confidence-source"></span></div>
+        <div class="lens-row" id="lens-rationale-row" hidden><span class="lens-key">RATIONALE</span><span class="lens-val lens-rationale" id="lens-rationale"></span></div>
+      </div>
+      <div class="lens-section" id="lens-provenance-section" hidden>
+        <div class="lens-section-title">PROVENANCE</div>
+        <div id="lens-provenance-list"></div>
+      </div>
+      <div class="lens-section" id="lens-relationships-section">
+        <div class="lens-section-title">RELATIONSHIPS</div>
+        <div id="lens-relationships-list"></div>
+      </div>
+      <div class="lens-section" id="lens-facts-section" hidden>
+        <div class="lens-section-title">DERIVED FACTS</div>
+        <div id="lens-facts-list"></div>
+      </div>
+      <div class="lens-section" id="lens-conflicts-section" hidden>
+        <div class="lens-section-title">CONFLICTS</div>
+        <div id="lens-conflicts-list"></div>
+      </div>
+      <div class="lens-section" id="lens-hypotheses-section" hidden>
+        <div class="lens-section-title">HYPOTHESES</div>
+        <div id="lens-hypotheses-list"></div>
+      </div>
+    </div>
+
+    <div id="graph-status" class="graph-status" hidden>
+      <span class="gs-item"><span class="gs-count" id="gs-nodes">0</span><span class="gs-label">NODES</span></span>
+      <span class="gs-item"><span class="gs-count" id="gs-edges">0</span><span class="gs-label">EDGES</span></span>
+      <span class="gs-item"><span class="gs-count" id="gs-facts">0</span><span class="gs-label">FACTS</span></span>
+      <span class="gs-item"><span class="gs-count" id="gs-conflicts">0</span><span class="gs-label">CONFLICTS</span></span>
+      <span class="gs-item"><span class="gs-count" id="gs-hypotheses">0</span><span class="gs-label">HYPOTHESES</span></span>
     </div>
   </main>
 
   <style>
-    .node-inspector {
-      position: fixed;
-      z-index: 100;
-      top: 50%;
-      left: 50%;
-      transform: translate(20px, -50%);
+    /* Evidence Lens */
+    .evidence-lens {
+      position: fixed; z-index: 100; top: 50%; right: 28px;
+      transform: translateY(-50%);
       pointer-events: none;
-      background: rgba(11, 17, 23, .85);
-      border: 1px solid var(--line);
-      border-left: 2px solid var(--cyan);
-      padding: 16px 20px;
-      backdrop-filter: blur(8px);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
-      min-width: 220px;
-      animation: rise .3s cubic-bezier(.22, 1, .36, 1) both;
+      background: rgba(11, 17, 23, .88);
+      border: 1px solid var(--line); border-right: 2px solid var(--cyan);
+      padding: 0; backdrop-filter: blur(10px);
+      box-shadow: 0 12px 40px rgba(0,0,0,.55);
+      width: 280px; max-height: 72vh; overflow-y: auto;
+      animation: rise .3s cubic-bezier(.22,1,.36,1) both;
     }
-    .inspector-id {
-      color: var(--ink);
-      font: 500 13px ui-monospace, SFMono-Regular, Consolas, monospace;
-      margin-bottom: 12px;
-      word-break: break-all;
+    .evidence-lens::-webkit-scrollbar { width: 3px; }
+    .evidence-lens::-webkit-scrollbar-thumb { background: var(--line); }
+    .lens-section { padding: 14px 18px; border-bottom: 1px solid var(--line); }
+    .lens-section:last-child { border-bottom: none; }
+    .lens-section[hidden] { display: none; }
+    .lens-section-title {
+      color: var(--cyan); font: 600 9px ui-monospace, SFMono-Regular, Consolas, monospace;
+      letter-spacing: .18em; margin-bottom: 10px;
     }
-    .inspector-detail {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 6px;
-      color: #c8d5d9;
-      font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+    .lens-node-label {
+      color: var(--ink); font: 500 14px "Space Grotesk", sans-serif;
+      margin-bottom: 10px; word-break: break-word;
     }
-    .inspector-detail:last-child { margin-bottom: 0; }
-    .inspector-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+    .lens-row {
+      display: flex; justify-content: space-between; gap: 12px;
+      margin-bottom: 5px; font: 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .lens-row[hidden] { display: none; }
+    .lens-key { color: var(--muted); letter-spacing: .08em; flex-shrink: 0; }
+    .lens-val { color: #c8d5d9; text-align: right; word-break: break-all; }
+    .lens-id-val { font-size: 9px; color: var(--muted); max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+    .lens-rationale { font-size: 10px; color: #9aa8b0; max-width: 170px; }
+    .lens-prov-item {
+      padding: 6px 0; border-top: 1px solid rgba(157,183,192,.08);
+      font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; color: #a0adb5;
+    }
+    .lens-prov-item:first-child { border-top: none; }
+    .lens-prov-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+    .lens-prov-key { color: var(--muted); font-size: 9px; letter-spacing: .06em; }
+    .lens-prov-val { color: #c8d5d9; text-align: right; }
+    .lens-evidence-tag { color: var(--cyan); font-size: 9px; margin-top: 2px; }
+    .lens-rel-item {
+      padding: 5px 0; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace;
+      color: #c8d5d9; border-top: 1px solid rgba(157,183,192,.06);
+    }
+    .lens-rel-item:first-child { border-top: none; }
+    .lens-rel-relation { color: var(--amber); }
+    .lens-rel-target { color: #c8d5d9; }
+    .lens-rel-conf { color: var(--muted); font-size: 9px; }
+    .lens-empty { color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .06em; }
+    .lens-fact-item, .lens-conflict-item, .lens-hyp-item {
+      padding: 6px 0; font: 10px ui-monospace, SFMono-Regular, Consolas, monospace;
+      color: #c8d5d9; border-top: 1px solid rgba(157,183,192,.06);
+    }
+    .lens-fact-item:first-child, .lens-conflict-item:first-child, .lens-hyp-item:first-child { border-top: none; }
+    .lens-severity { color: #ed907f; font-size: 9px; letter-spacing: .06em; }
+
+    /* Graph Status HUD */
+    .graph-status {
+      position: fixed; z-index: 90; bottom: 18px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 22px; padding: 10px 22px;
+      background: rgba(11,17,23,.72); border: 1px solid var(--line);
+      backdrop-filter: blur(6px); pointer-events: none;
+      animation: rise .5s .2s cubic-bezier(.22,1,.36,1) both;
+    }
+    .graph-status[hidden] { display: none; }
+    .gs-item { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .gs-count { color: var(--ink); font: 500 14px ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .gs-label { color: var(--muted); font: 8px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .14em; }
+
+    @media (max-width: 760px) {
+      .evidence-lens { right: 8px; width: 240px; max-height: 60vh; }
+      .graph-status { gap: 12px; padding: 8px 14px; }
+      .gs-count { font-size: 12px; }
+    }
   </style>
 
   <script>
@@ -549,13 +629,191 @@
       
       let realGraph = null;
       let selectedNodeId = null;
-      
-      const inspector = document.getElementById('node-inspector');
-      const inspectorId = document.getElementById('inspector-id');
-      const inspectorKind = document.getElementById('inspector-kind');
-      const inspectorConfidenceRow = document.getElementById('inspector-confidence-row');
-      const inspectorConfidence = document.getElementById('inspector-confidence');
-      const inspectorEdges = document.getElementById('inspector-edges');
+
+      // Precomputed graph indexes (built once after GraphSnapshot arrives)
+      let graphIndex = null;
+
+      function buildGraphIndex(graph) {
+        const nodeMap = new Map();
+        const edgesByNode = new Map();
+        for (const node of graph.nodes) {
+          nodeMap.set(node.id, node);
+          edgesByNode.set(node.id, []);
+        }
+        for (const edge of graph.edges) {
+          if (edgesByNode.has(edge.from)) edgesByNode.get(edge.from).push(edge);
+          if (edgesByNode.has(edge.to)) edgesByNode.get(edge.to).push(edge);
+        }
+        return { nodeMap, edgesByNode };
+      }
+
+      // Evidence Lens DOM refs
+      const lens = document.getElementById('evidence-lens');
+      const lensLabel = document.getElementById('lens-label');
+      const lensKind = document.getElementById('lens-kind');
+      const lensId = document.getElementById('lens-id');
+      const lensConfSection = document.getElementById('lens-confidence-section');
+      const lensConfScore = document.getElementById('lens-confidence-score');
+      const lensConfSource = document.getElementById('lens-confidence-source');
+      const lensRationaleRow = document.getElementById('lens-rationale-row');
+      const lensRationale = document.getElementById('lens-rationale');
+      const lensProvSection = document.getElementById('lens-provenance-section');
+      const lensProvList = document.getElementById('lens-provenance-list');
+      const lensRelSection = document.getElementById('lens-relationships-section');
+      const lensRelList = document.getElementById('lens-relationships-list');
+      const lensFactsSection = document.getElementById('lens-facts-section');
+      const lensFactsList = document.getElementById('lens-facts-list');
+      const lensConflictsSection = document.getElementById('lens-conflicts-section');
+      const lensConflictsList = document.getElementById('lens-conflicts-list');
+      const lensHypSection = document.getElementById('lens-hypotheses-section');
+      const lensHypList = document.getElementById('lens-hypotheses-list');
+      const graphStatusEl = document.getElementById('graph-status');
+      const gsNodes = document.getElementById('gs-nodes');
+      const gsEdges = document.getElementById('gs-edges');
+      const gsFacts = document.getElementById('gs-facts');
+      const gsConflicts = document.getElementById('gs-conflicts');
+      const gsHypotheses = document.getElementById('gs-hypotheses');
+
+      function updateGraphStatus() {
+        if (!realGraph) { graphStatusEl.hidden = true; return; }
+        gsNodes.textContent = String(realGraph.nodes.length).padStart(2, '0');
+        gsEdges.textContent = String(realGraph.edges.length).padStart(2, '0');
+        gsFacts.textContent = String((realGraph.derivedFacts || []).length).padStart(2, '0');
+        gsConflicts.textContent = String((realGraph.conflicts || []).length).padStart(2, '0');
+        gsHypotheses.textContent = String((realGraph.hypotheses || []).length).padStart(2, '0');
+        graphStatusEl.hidden = false;
+      }
+
+      function populateLens(node) {
+        // Label / Kind / ID
+        lensLabel.textContent = node.label || node.id;
+        lensKind.textContent = node.kind || '';
+        lensId.textContent = node.id;
+
+        // Confidence
+        if (node.confidence) {
+          lensConfScore.textContent = node.confidence.score !== undefined ? node.confidence.score.toFixed(2) : '';
+          lensConfSource.textContent = node.confidence.source || '';
+          if (node.confidence.rationale) {
+            lensRationale.textContent = node.confidence.rationale;
+            lensRationaleRow.hidden = false;
+          } else {
+            lensRationaleRow.hidden = true;
+          }
+          lensConfSection.hidden = false;
+        } else {
+          lensConfSection.hidden = true;
+        }
+
+        // Provenance
+        const provRecords = node.provenance || [];
+        if (provRecords.length > 0) {
+          lensProvList.innerHTML = '';
+          for (const prov of provRecords) {
+            const item = document.createElement('div');
+            item.className = 'lens-prov-item';
+            let html = '';
+            html += `<div class="lens-prov-row"><span class="lens-prov-key">SOURCE</span><span class="lens-prov-val">${esc(prov.sourceType)} / ${esc(prov.sourceId)}</span></div>`;
+            if (prov.sourceVersion) html += `<div class="lens-prov-row"><span class="lens-prov-key">VERSION</span><span class="lens-prov-val">${esc(prov.sourceVersion)}</span></div>`;
+            html += `<div class="lens-prov-row"><span class="lens-prov-key">RUN</span><span class="lens-prov-val">${esc(prov.runId)}</span></div>`;
+            html += `<div class="lens-prov-row"><span class="lens-prov-key">EXTERNAL</span><span class="lens-prov-val">${prov.external ? 'yes' : 'no'}</span></div>`;
+            if (prov.supportingEvidenceIds && prov.supportingEvidenceIds.length > 0) {
+              html += `<div class="lens-evidence-tag">DERIVED — supported by ${prov.supportingEvidenceIds.length} evidence ID(s)</div>`;
+              for (const eid of prov.supportingEvidenceIds) {
+                html += `<div class="lens-evidence-tag">↳ ${esc(eid)}</div>`;
+              }
+            } else {
+              html += `<div class="lens-evidence-tag">SOURCE RECORD</div>`;
+            }
+            item.innerHTML = html;
+            lensProvList.appendChild(item);
+          }
+          lensProvSection.hidden = false;
+        } else {
+          lensProvSection.hidden = true;
+        }
+
+        // Relationships (real edges only)
+        const nodeEdges = graphIndex ? (graphIndex.edgesByNode.get(node.id) || []) : [];
+        lensRelList.innerHTML = '';
+        if (nodeEdges.length > 0) {
+          for (const edge of nodeEdges) {
+            const otherId = edge.from === node.id ? edge.to : edge.from;
+            const otherNode = graphIndex.nodeMap.get(otherId);
+            const otherLabel = otherNode ? (otherNode.label || otherNode.id) : otherId;
+            const dir = edge.from === node.id ? '→' : '←';
+            const item = document.createElement('div');
+            item.className = 'lens-rel-item';
+            let html = `<span class="lens-rel-relation">${esc(edge.relation)}</span> ${dir} <span class="lens-rel-target">${esc(otherLabel)}</span>`;
+            if (edge.confidence && edge.confidence.score !== undefined) {
+              html += ` <span class="lens-rel-conf">${edge.confidence.score.toFixed(2)}</span>`;
+            }
+            item.innerHTML = html;
+            lensRelList.appendChild(item);
+          }
+        } else {
+          lensRelList.innerHTML = '<div class="lens-empty">NO RECORDED RELATIONSHIPS</div>';
+        }
+        lensRelSection.hidden = false;
+
+        // Derived facts (graph-level, show all if they exist)
+        const facts = (realGraph.derivedFacts || []);
+        if (facts.length > 0) {
+          lensFactsList.innerHTML = '';
+          for (const f of facts) {
+            const item = document.createElement('div');
+            item.className = 'lens-fact-item';
+            let html = `<div>${esc(f.statement)}</div>`;
+            if (f.confidence) html += `<div class="lens-rel-conf">${f.confidence.score !== undefined ? f.confidence.score.toFixed(2) : ''} / ${f.confidence.source || ''}</div>`;
+            if (f.evidenceIds && f.evidenceIds.length > 0) html += `<div class="lens-evidence-tag">${f.evidenceIds.length} evidence ID(s)</div>`;
+            item.innerHTML = html;
+            lensFactsList.appendChild(item);
+          }
+          lensFactsSection.hidden = false;
+        } else {
+          lensFactsSection.hidden = true;
+        }
+
+        // Conflicts
+        const conflicts = (realGraph.conflicts || []);
+        if (conflicts.length > 0) {
+          lensConflictsList.innerHTML = '';
+          for (const c of conflicts) {
+            const item = document.createElement('div');
+            item.className = 'lens-conflict-item';
+            let html = `<div>${esc(c.summary)}</div>`;
+            html += `<div class="lens-severity">${esc(c.severity || '')}</div>`;
+            item.innerHTML = html;
+            lensConflictsList.appendChild(item);
+          }
+          lensConflictsSection.hidden = false;
+        } else {
+          lensConflictsSection.hidden = true;
+        }
+
+        // Hypotheses
+        const hyps = (realGraph.hypotheses || []);
+        if (hyps.length > 0) {
+          lensHypList.innerHTML = '';
+          for (const h of hyps) {
+            const item = document.createElement('div');
+            item.className = 'lens-hyp-item';
+            let html = `<div>${esc(h.statement)}</div>`;
+            if (h.confidence) html += `<div class="lens-rel-conf">${h.confidence.score !== undefined ? h.confidence.score.toFixed(2) : ''}</div>`;
+            if (h.supportingEvidenceIds && h.supportingEvidenceIds.length > 0) html += `<div class="lens-evidence-tag">supporting: ${h.supportingEvidenceIds.length}</div>`;
+            if (h.missingEvidenceIds && h.missingEvidenceIds.length > 0) html += `<div class="lens-severity">missing: ${h.missingEvidenceIds.length}</div>`;
+            item.innerHTML = html;
+            lensHypList.appendChild(item);
+          }
+          lensHypSection.hidden = false;
+        } else {
+          lensHypSection.hidden = true;
+        }
+
+        lens.hidden = false;
+      }
+
+      function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
       function stableHash(str) {
         let hash = 5381;
@@ -601,8 +859,8 @@
         const adjacency = new Map();
         nodes.forEach(node => adjacency.set(node.id, []));
         edges.forEach(edge => {
-          if (adjacency.has(edge.source)) adjacency.get(edge.source).push(edge.target);
-          if (adjacency.has(edge.target)) adjacency.get(edge.target).push(edge.source);
+          if (adjacency.has(edge.from)) adjacency.get(edge.from).push(edge.to);
+          if (adjacency.has(edge.to)) adjacency.get(edge.to).push(edge.from);
         });
 
         // Deterministic sort of adjacency lists
@@ -829,9 +1087,9 @@
               scale *= 0.85;
               opacity *= 0.6;
             } else if (stageIndex === 2) { // VERIFY: confidence influences scale
-              if (node.confidence !== undefined) {
-                scale *= 0.5 + (node.confidence * 0.5);
-                opacity *= 0.6 + (node.confidence * 0.4);
+              if (node.confidence && node.confidence.score !== undefined) {
+                scale *= 0.5 + (node.confidence.score * 0.5);
+                opacity *= 0.6 + (node.confidence.score * 0.4);
               }
             } else if (stageIndex === 3) { // ENTER: clear, depth fully realized
               // Fully realized scale and opacity
@@ -941,8 +1199,8 @@
             const edgeEmergeAlpha = clamp((progress - 0.3) * 1.5, 0, 1);
             
             for (const edge of realGraph.edges) {
-                const sourcePoint = activePoints.find(p => p.originalNode.id === edge.source);
-                const targetPoint = activePoints.find(p => p.originalNode.id === edge.target);
+                const sourcePoint = activePoints.find(p => p.originalNode.id === edge.from);
+                const targetPoint = activePoints.find(p => p.originalNode.id === edge.to);
                 
                 if (sourcePoint && targetPoint) {
                     const distance = Math.hypot(sourcePoint.x - targetPoint.x, sourcePoint.y - targetPoint.y);
@@ -1010,6 +1268,12 @@
           let opacity = point.opacity;
           if (isSelected) opacity = 1;
           if (isDimmed) opacity *= 0.25;
+
+          // Confidence-based glow strength (only when confidence exists)
+          let glowExtra = 0;
+          if (realGraph && point.originalNode && point.originalNode.confidence && progress > 0.45) {
+              glowExtra = point.originalNode.confidence.score * clamp((progress - 0.45) * 2, 0, 1);
+          }
           
           let fillStyle = `rgba(141, 228, 226, ${opacity})`;
           
@@ -1028,6 +1292,14 @@
               if (isSelected) fillStyle = `rgba(255, 255, 255, 1)`;
           }
           
+          // Confidence glow halo (appears during VERIFY/ENTER)
+          if (realGraph && glowExtra > 0.1 && !isDimmed) {
+              context.fillStyle = `rgba(141, 228, 226, ${glowExtra * 0.12 * opacity})`;
+              context.beginPath();
+              context.arc(point.x, point.y, radius + 4 + glowExtra * 6, 0, Math.PI * 2);
+              context.fill();
+          }
+
           context.fillStyle = fillStyle;
           context.beginPath();
           
@@ -1049,6 +1321,22 @@
               context.beginPath();
               context.arc(point.x, point.y, radius * 3, 0, Math.PI * 2);
               context.fill();
+
+              // Provenance orbit markers (only when provenance actually exists)
+              if (point.originalNode && point.originalNode.provenance && point.originalNode.provenance.length > 0) {
+                  const provCount = point.originalNode.provenance.length;
+                  const orbitR = radius * 4.5;
+                  const orbitSpeed = lastFrame * 0.0004;
+                  for (let pi = 0; pi < provCount; pi++) {
+                      const a = orbitSpeed + (pi / provCount) * Math.PI * 2;
+                      const px = point.x + Math.cos(a) * orbitR;
+                      const py = point.y + Math.sin(a) * orbitR;
+                      context.fillStyle = `rgba(141, 228, 226, 0.6)`;
+                      context.beginPath();
+                      context.arc(px, py, 1.5, 0, Math.PI * 2);
+                      context.fill();
+                  }
+              }
           }
 
           // Render labels
@@ -1061,7 +1349,7 @@
               if (textAlpha > 0) {
                 context.fillStyle = isSelected ? `rgba(255, 255, 255, 1)` : `rgba(232, 238, 243, ${textAlpha})`;
                 context.font = isSelected ? 'bold 11px ui-monospace, SFMono-Regular, Consolas, monospace' : '10px ui-monospace, SFMono-Regular, Consolas, monospace';
-                const label = point.originalNode.name || point.originalNode.id.split(':').pop();
+                const label = point.originalNode.label || point.originalNode.id.split(':').pop();
                 context.fillText(label, point.x + (isSelected ? 14 : 8), point.y + 4);
               }
           }
@@ -1116,31 +1404,10 @@
           
           if (closestNode) {
               selectedNodeId = closestNode.id;
-              
-              inspectorId.textContent = closestNode.id;
-              inspectorKind.textContent = closestNode.kind || 'UNKNOWN';
-              
-              if (closestNode.confidence !== undefined) {
-                  inspectorConfidence.textContent = closestNode.confidence.toFixed(2);
-                  inspectorConfidenceRow.style.display = 'flex';
-              } else {
-                  inspectorConfidenceRow.style.display = 'none';
-              }
-              
-              let edgeCount = 0;
-              for (const edge of realGraph.edges) {
-                  if (edge.source === closestNode.id || edge.target === closestNode.id) {
-                      edgeCount++;
-                  }
-              }
-              inspectorEdges.textContent = edgeCount.toString();
-              
-              inspector.style.top = `${event.clientY}px`;
-              inspector.style.left = `${event.clientX}px`;
-              inspector.hidden = false;
+              populateLens(closestNode);
           } else {
               selectedNodeId = null;
-              inspector.hidden = true;
+              lens.hidden = true;
           }
       });
 
@@ -1183,8 +1450,9 @@
         const button = form.querySelector('button');
         button.disabled = true;
         result.hidden = true;
-        inspector.hidden = true;
+        lens.hidden = true;
         selectedNodeId = null;
+        graphIndex = null;
         setState('ANALYZING', 'initiating analysis');
 
         try {
@@ -1220,7 +1488,9 @@
           if (!graphRes.ok || !graphPayload.success) throw new Error('Failed to load graph');
           
           realGraph = graphPayload.graph;
+          graphIndex = buildGraphIndex(realGraph);
           resize();
+          updateGraphStatus();
           
           setState('COMPLETE', `rendered ${realGraph.nodes.length} nodes from ${runId}`);
           resultMeta.textContent = `RUN ${runId} / ${realGraph.nodes.length} NODES / ${realGraph.edges.length} EDGES`;
