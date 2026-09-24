@@ -1,0 +1,249 @@
+function stableHash(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+  }
+  return (hash >>> 0);
+}
+
+export function computeTopology(nodes, edges) {
+  const n = nodes.length;
+  if (n === 0) return [];
+  if (n === 1) return [{ id: nodes[0].id, x: 0.5, y: 0.5, degree: 0 }];
+
+  const adjacency = new Map();
+  nodes.forEach(node => adjacency.set(node.id, []));
+  edges.forEach(edge => {
+    if (adjacency.has(edge.from)) adjacency.get(edge.from).push(edge.to);
+    if (adjacency.has(edge.to)) adjacency.get(edge.to).push(edge.from);
+  });
+
+  for (const [id, neighbors] of adjacency.entries()) {
+    neighbors.sort((a, b) => a.localeCompare(b));
+  }
+
+  const visited = new Set();
+  const components = [];
+  const sortedNodes = [...nodes].sort((a, b) => a.id.localeCompare(b.id));
+
+  for (const node of sortedNodes) {
+    if (!visited.has(node.id)) {
+      const comp = [];
+      const queue = [node.id];
+      visited.add(node.id);
+      
+      while (queue.length > 0) {
+        const curr = queue.shift();
+        comp.push(curr);
+        for (const neighbor of adjacency.get(curr)) {
+          if (!visited.has(neighbor)) {
+            visited.add(neighbor);
+            queue.push(neighbor);
+          }
+        }
+      }
+      components.push(comp);
+    }
+  }
+
+  components.sort((a, b) => {
+     if (b.length !== a.length) return b.length - a.length;
+     return a[0].localeCompare(b[0]);
+  });
+
+  const results = [];
+  const baseRadius = 0.08; 
+  
+  components.forEach((comp, compIndex) => {
+     let cx = 0, cy = 0;
+     if (compIndex === 0) {
+        cx = 0; cy = 0;
+     } else {
+        const ring = Math.ceil(Math.sqrt(compIndex));
+        const maxInRing = 8 * ring;
+        const idxInRing = compIndex - Math.pow(ring - 1, 2);
+        const angle = (idxInRing / maxInRing) * Math.PI * 2;
+        const dist = ring * 0.4; 
+        cx = Math.cos(angle) * dist;
+        cy = Math.sin(angle) * dist;
+     }
+     
+     if (comp.length === 1) {
+         results.push({ id: comp[0], x: cx, y: cy, degree: adjacency.get(comp[0]).length });
+         return;
+     }
+
+     let root = comp[0];
+     let maxDegree = -1;
+     for (const id of comp) {
+         const deg = adjacency.get(id).length;
+         if (deg > maxDegree || (deg === maxDegree && id.localeCompare(root) < 0)) {
+             maxDegree = deg;
+             root = id;
+         }
+     }
+     
+     const depthMap = new Map();
+     const rings = []; 
+     const q = [root];
+     depthMap.set(root, 0);
+     rings[0] = [root];
+     
+     const compVisited = new Set([root]);
+     
+     while(q.length > 0) {
+         const curr = q.shift();
+         const d = depthMap.get(curr);
+         
+         for (const neighbor of adjacency.get(curr)) {
+             if (!compVisited.has(neighbor) && comp.includes(neighbor)) {
+                 compVisited.add(neighbor);
+                 depthMap.set(neighbor, d + 1);
+                 if (!rings[d + 1]) rings[d + 1] = [];
+                 rings[d + 1].push(neighbor);
+                 q.push(neighbor);
+             }
+         }
+     }
+     
+     for (const id of comp) {
+         if (!compVisited.has(id)) {
+             if (!rings[1]) rings[1] = [];
+             rings[1].push(id);
+         }
+     }
+     
+     for (let d = 0; d < rings.length; d++) {
+         const ringNodes = rings[d];
+         if (d === 0) {
+             results.push({ id: ringNodes[0], x: cx, y: cy, degree: adjacency.get(ringNodes[0]).length });
+         } else {
+             ringNodes.sort((a, b) => stableHash(a) - stableHash(b));
+             const r = d * baseRadius * (1 + (ringNodes.length / 20));
+             const count = ringNodes.length;
+             const angleOffset = (stableHash(root) % 360) * (Math.PI / 180);
+             for (let i = 0; i < count; i++) {
+                 const angle = angleOffset + (i / count) * Math.PI * 2;
+                 results.push({
+                     id: ringNodes[i],
+                     x: cx + Math.cos(angle) * r,
+                     y: cy + Math.sin(angle) * r,
+                     degree: adjacency.get(ringNodes[i]).length
+                 });
+             }
+         }
+     }
+  });
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  results.forEach(p => {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  });
+
+  const w = maxX - minX;
+  const h = maxY - minY;
+  const scale = Math.max(w, h) > 0 ? 0.7 / Math.max(w, h) : 1;
+
+  results.forEach(p => {
+      p.x = 0.5 + (p.x - (minX + w / 2)) * scale;
+      p.y = 0.5 + (p.y - (minY + h / 2)) * scale;
+  });
+
+  return results;
+}
+
+export function makeRealLayoutStages(nodes, topology) {
+  const stages = [[], [], [], []];
+  const n = nodes.length;
+  
+  for (let i = 0; i < n; i++) {
+    const node = nodes[i];
+    const topo = topology.find(t => t.id === node.id);
+    const kind = (node.kind || '').toLowerCase();
+    
+    let semanticScale = 1;
+    let semanticOpacity = 0.8;
+    let isForeground = false;
+    let isBackground = false;
+
+    if (kind.startsWith('metadata')) {
+      semanticScale = 0.5;
+      semanticOpacity = 0.4;
+      isBackground = true;
+    } else if (kind.includes('component') || kind.includes('framework') || kind.includes('server')) {
+      semanticScale = 1.3;
+      semanticOpacity = 1;
+      isForeground = true;
+    } else if (kind.includes('module') || kind.includes('ast')) {
+      semanticScale = 0.9;
+      semanticOpacity = 0.7;
+    }
+
+    if (topo.degree > 3) {
+      semanticScale *= 1.15;
+      isForeground = true;
+    }
+
+    const zDepth = isForeground ? 1.2 : (isBackground ? -0.5 : 0);
+
+    for (let stageIndex = 0; stageIndex < 4; stageIndex++) {
+      let x = topo.x;
+      let y = topo.y;
+      let scale = semanticScale;
+      let opacity = semanticOpacity;
+
+      if (stageIndex === 0) { 
+        x = 0.5 + (x - 0.5) * 0.7;
+        y = 0.5 + (y - 0.5) * 0.7;
+        scale *= 0.6;
+        opacity *= 0.3;
+      } else if (stageIndex === 1) { 
+        x = 0.5 + (x - 0.5) * 0.9;
+        y = 0.5 + (y - 0.5) * 0.9;
+        scale *= 0.85;
+        opacity *= 0.6;
+      } else if (stageIndex === 2) { 
+        if (node.confidence && node.confidence.score !== undefined) {
+          scale *= 0.5 + (node.confidence.score * 0.5);
+          opacity *= 0.6 + (node.confidence.score * 0.4);
+        }
+      }
+
+      stages[stageIndex].push({
+        x, y, scale, opacity, 
+        originalNode: node, 
+        zDepth, 
+        kindGroup: isForeground ? 'fore' : (isBackground ? 'back' : 'mid')
+      });
+    }
+  }
+  return stages;
+}
+
+export function makeProceduralLayout(count, stageIndex) {
+  const layout = [];
+  for (let index = 0; index < count; index += 1) {
+    const angle = (index / count) * Math.PI * 2;
+    const ring = index % 3;
+    let x = 0;
+    let y = 0;
+    if (stageIndex === 0) {
+      x = (index * 137) % 1000 / 1000;
+      y = (index * 71 + ring * 83) % 840 / 840;
+    } else if (stageIndex === 1) {
+      x = .5 + Math.cos(angle) * (.16 + ring * .11);
+      y = .49 + Math.sin(angle) * (.16 + ring * .13);
+    } else if (stageIndex === 2) {
+      x = .5 + Math.cos(angle) * (.12 + ring * .12);
+      y = .52 + Math.sin(angle) * (.12 + ring * .13);
+    } else {
+      x = .5 + Math.cos(angle) * (.09 + ring * .17);
+      y = .5 + Math.sin(angle) * (.09 + ring * .17);
+    }
+    layout.push({ x, y, scale: stageIndex === 0 ? .72 + (index % 4) * .08 : 1 + ring * .12, opacity: stageIndex === 0 ? .35 + (index % 5) * .1 : stageIndex === 2 && index % 4 === 0 ? 1 : .62 + ring * .1 });
+  }
+  return layout;
+}
