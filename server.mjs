@@ -73,6 +73,22 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === 'GET' && url.startsWith('/node_modules/three/')) {
+      const relativePath = normalize(url.slice('/node_modules/three/'.length));
+      const filePath = resolve(join(root, 'node_modules', 'three', relativePath));
+      if (!filePath.startsWith(resolve(join(root, 'node_modules', 'three')))) {
+        sendJson(response, 403, { success: false, error: 'Forbidden.' });
+        return;
+      }
+      if (!existsSync(filePath)) {
+        sendJson(response, 404, { success: false, error: 'Not found.' });
+        return;
+      }
+      response.writeHead(200, { 'content-type': contentTypes[extname(filePath)] || 'application/octet-stream' });
+      createReadStream(filePath).pipe(response);
+      return;
+    }
+
     if (request.method === 'GET' && url.startsWith('/src/frontend/')) {
       const relativePath = normalize(url.slice('/src/frontend/'.length));
       const filePath = resolve(join(root, 'src', 'frontend', relativePath));

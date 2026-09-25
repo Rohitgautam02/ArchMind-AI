@@ -5,7 +5,7 @@ import { Renderer2D } from './renderer-2d.js';
 import { InteractionController } from './interaction.js';
 import { UILens } from './ui-lens.js';
 
-(() => {
+(async () => {
   const canvas = document.getElementById('architecture-field');
   const scene = document.querySelector('.scene');
   const frames = Array.from(document.querySelectorAll('.story-frame'));
@@ -22,7 +22,17 @@ import { UILens } from './ui-lens.js';
 
   const graphModel = new GraphModel();
   const uiLens = new UILens();
-  const renderer = new Renderer2D(canvas, scene, frames, progressFill, sceneLabel, sceneIndex);
+
+  const params = new URLSearchParams(window.location.search);
+  const use3D = params.get('renderer') === '3d';
+  let renderer;
+  if (use3D) {
+    const { Renderer3D } = await import('./renderer-3d.js');
+    renderer = new Renderer3D(canvas, scene, frames, progressFill, sceneLabel, sceneIndex);
+  } else {
+    renderer = new Renderer2D(canvas, scene, frames, progressFill, sceneLabel, sceneIndex);
+  }
+
   const interaction = new InteractionController(canvas);
 
   interaction.getHitTargets = (x, y) => renderer.hitTest(x, y, interaction.progress, interaction.pointerX, interaction.pointerY);
