@@ -1,6 +1,6 @@
 import { analyzeRepository } from './api-client.js';
 import { GraphModel } from './graph-model.js';
-import { computeTopology, makeRealLayoutStages, makeProceduralLayout } from './spatial-layout.js';
+import { buildSceneDescription } from './spatial-layout.js';
 import { Renderer2D } from './renderer-2d.js';
 import { InteractionController } from './interaction.js';
 import { UILens } from './ui-lens.js';
@@ -26,34 +26,30 @@ import { UILens } from './ui-lens.js';
   const interaction = new InteractionController(canvas);
 
   interaction.getHitTargets = (x, y) => renderer.hitTest(x, y, interaction.progress, interaction.pointerX, interaction.pointerY);
-  interaction.onNodeClick = (node) => {
-    renderer.setSelectedNode(node.id);
-    uiLens.populateLens(node, graphModel);
+
+  interaction.onNodeClick = (nodeId) => {
+    renderer.setSelectedNode(nodeId);
+    if (nodeId) {
+       const node = graphModel.getNode(nodeId);
+       if (node) uiLens.populateLens(node, graphModel);
+    }
   };
+
   interaction.onEmptyClick = () => {
     renderer.setSelectedNode(null);
     uiLens.hideLens();
   };
 
   function rebuildLayout() {
-    const layouts = [];
-    let count = 0;
-    let hasRealGraph = false;
+    let sceneData = null;
 
     if (graphModel.realGraph) {
-      count = graphModel.realGraph.nodes.length;
-      hasRealGraph = true;
-      const topo = computeTopology(graphModel.realGraph.nodes, graphModel.realGraph.edges);
-      const stages = makeRealLayoutStages(graphModel.realGraph.nodes, topo);
-      stages.forEach(stage => layouts.push(stage));
+      sceneData = buildSceneDescription(graphModel.realGraph.nodes, graphModel.realGraph.edges, true);
     } else {
-      count = 58;
-      for (let index = 0; index < 4; index += 1) {
-        layouts.push(makeProceduralLayout(count, index));
-      }
+      sceneData = buildSceneDescription([], [], false, 58);
     }
-    
-    renderer.setLayouts(layouts, count, hasRealGraph, graphModel);
+
+    renderer.setSceneData(sceneData);
   }
 
   function handleResize() {
@@ -62,7 +58,7 @@ import { UILens } from './ui-lens.js';
   }
 
   window.addEventListener('resize', handleResize);
-  
+
   handleResize();
   interaction.updateScrollTarget();
   renderer.draw(0, interaction);
@@ -92,7 +88,7 @@ import { UILens } from './ui-lens.js';
     uiLens.hideLens();
     renderer.setSelectedNode(null);
     graphModel.clearIndex();
-    
+
     await analyzeRepository(repositoryPath, {
       onStateChange: (status, message) => setAnalysisState(status, message),
       onComplete: (graph, runId) => {

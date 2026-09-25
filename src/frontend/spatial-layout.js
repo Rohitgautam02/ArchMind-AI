@@ -31,7 +31,7 @@ export function computeTopology(nodes, edges) {
       const comp = [];
       const queue = [node.id];
       visited.add(node.id);
-      
+
       while (queue.length > 0) {
         const curr = queue.shift();
         comp.push(curr);
@@ -52,8 +52,8 @@ export function computeTopology(nodes, edges) {
   });
 
   const results = [];
-  const baseRadius = 0.08; 
-  
+  const baseRadius = 0.08;
+
   components.forEach((comp, compIndex) => {
      let cx = 0, cy = 0;
      if (compIndex === 0) {
@@ -63,11 +63,11 @@ export function computeTopology(nodes, edges) {
         const maxInRing = 8 * ring;
         const idxInRing = compIndex - Math.pow(ring - 1, 2);
         const angle = (idxInRing / maxInRing) * Math.PI * 2;
-        const dist = ring * 0.4; 
+        const dist = ring * 0.4;
         cx = Math.cos(angle) * dist;
         cy = Math.sin(angle) * dist;
      }
-     
+
      if (comp.length === 1) {
          results.push({ id: comp[0], x: cx, y: cy, degree: adjacency.get(comp[0]).length });
          return;
@@ -82,19 +82,19 @@ export function computeTopology(nodes, edges) {
              root = id;
          }
      }
-     
+
      const depthMap = new Map();
-     const rings = []; 
+     const rings = [];
      const q = [root];
      depthMap.set(root, 0);
      rings[0] = [root];
-     
+
      const compVisited = new Set([root]);
-     
+
      while(q.length > 0) {
          const curr = q.shift();
          const d = depthMap.get(curr);
-         
+
          for (const neighbor of adjacency.get(curr)) {
              if (!compVisited.has(neighbor) && comp.includes(neighbor)) {
                  compVisited.add(neighbor);
@@ -105,14 +105,14 @@ export function computeTopology(nodes, edges) {
              }
          }
      }
-     
+
      for (const id of comp) {
          if (!compVisited.has(id)) {
              if (!rings[1]) rings[1] = [];
              rings[1].push(id);
          }
      }
-     
+
      for (let d = 0; d < rings.length; d++) {
          const ringNodes = rings[d];
          if (d === 0) {
@@ -158,12 +158,12 @@ export function computeTopology(nodes, edges) {
 export function makeRealLayoutStages(nodes, topology) {
   const stages = [[], [], [], []];
   const n = nodes.length;
-  
+
   for (let i = 0; i < n; i++) {
     const node = nodes[i];
     const topo = topology.find(t => t.id === node.id);
     const kind = (node.kind || '').toLowerCase();
-    
+
     let semanticScale = 1;
     let semanticOpacity = 0.8;
     let isForeground = false;
@@ -195,17 +195,17 @@ export function makeRealLayoutStages(nodes, topology) {
       let scale = semanticScale;
       let opacity = semanticOpacity;
 
-      if (stageIndex === 0) { 
+      if (stageIndex === 0) {
         x = 0.5 + (x - 0.5) * 0.7;
         y = 0.5 + (y - 0.5) * 0.7;
         scale *= 0.6;
         opacity *= 0.3;
-      } else if (stageIndex === 1) { 
+      } else if (stageIndex === 1) {
         x = 0.5 + (x - 0.5) * 0.9;
         y = 0.5 + (y - 0.5) * 0.9;
         scale *= 0.85;
         opacity *= 0.6;
-      } else if (stageIndex === 2) { 
+      } else if (stageIndex === 2) {
         if (node.confidence && node.confidence.score !== undefined) {
           scale *= 0.5 + (node.confidence.score * 0.5);
           opacity *= 0.6 + (node.confidence.score * 0.4);
@@ -213,9 +213,9 @@ export function makeRealLayoutStages(nodes, topology) {
       }
 
       stages[stageIndex].push({
-        x, y, scale, opacity, 
-        originalNode: node, 
-        zDepth, 
+        x, y, scale, opacity,
+        originalNode: node,
+        zDepth,
         kindGroup: isForeground ? 'fore' : (isBackground ? 'back' : 'mid')
       });
     }
@@ -246,4 +246,72 @@ export function makeProceduralLayout(count, stageIndex) {
     layout.push({ x, y, scale: stageIndex === 0 ? .72 + (index % 4) * .08 : 1 + ring * .12, opacity: stageIndex === 0 ? .35 + (index % 5) * .1 : stageIndex === 2 && index % 4 === 0 ? 1 : .62 + ring * .1 });
   }
   return layout;
+}
+
+export function buildSceneDescription(nodes, edges, isReal, proceduralCount = 58) {
+  const scene = {
+    isReal,
+    nodes: [],
+    edges: []
+  };
+
+  if (isReal) {
+    const topo = computeTopology(nodes, edges);
+    const stages = makeRealLayoutStages(nodes, topo);
+
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const kindGroup = stages[0][i].kindGroup;
+
+      scene.nodes.push({
+        id: node.id,
+        label: node.label || node.id.split(':').pop(),
+        visualTier: kindGroup,
+        signalStrength: (node.confidence && node.confidence.score !== undefined) ? node.confidence.score : 0,
+        orbitCount: (node.provenance && node.provenance.length > 0) ? node.provenance.length : 0,
+        isEmphasized: false,
+        stages: [
+          { x: stages[0][i].x, y: stages[0][i].y, scale: stages[0][i].scale, opacity: stages[0][i].opacity, zDepth: stages[0][i].zDepth },
+          { x: stages[1][i].x, y: stages[1][i].y, scale: stages[1][i].scale, opacity: stages[1][i].opacity, zDepth: stages[1][i].zDepth },
+          { x: stages[2][i].x, y: stages[2][i].y, scale: stages[2][i].scale, opacity: stages[2][i].opacity, zDepth: stages[2][i].zDepth },
+          { x: stages[3][i].x, y: stages[3][i].y, scale: stages[3][i].scale, opacity: stages[3][i].opacity, zDepth: stages[3][i].zDepth }
+        ]
+      });
+    }
+
+    for (const edge of edges) {
+      scene.edges.push({
+        id: edge.id || ${edge.from}-,
+        sourceId: edge.from,
+        targetId: edge.to,
+        signalStrength: (edge.confidence && edge.confidence.score !== undefined) ? edge.confidence.score : 1
+      });
+    }
+  } else {
+    const stages = [
+      makeProceduralLayout(proceduralCount, 0),
+      makeProceduralLayout(proceduralCount, 1),
+      makeProceduralLayout(proceduralCount, 2),
+      makeProceduralLayout(proceduralCount, 3)
+    ];
+
+    for (let i = 0; i < proceduralCount; i++) {
+      scene.nodes.push({
+        id: proc-,
+        label: '',
+        visualTier: 'mid',
+        signalStrength: 0,
+        orbitCount: 0,
+        isEmphasized: false,
+        stages: [
+          { x: stages[0][i].x, y: stages[0][i].y, scale: stages[0][i].scale, opacity: stages[0][i].opacity, zDepth: 0 },
+          { x: stages[1][i].x, y: stages[1][i].y, scale: stages[1][i].scale, opacity: stages[1][i].opacity, zDepth: 0 },
+          { x: stages[2][i].x, y: stages[2][i].y, scale: stages[2][i].scale, opacity: stages[2][i].opacity, zDepth: 0 },
+          { x: stages[3][i].x, y: stages[3][i].y, scale: stages[3][i].scale, opacity: stages[3][i].opacity, zDepth: 0 }
+        ]
+      });
+    }
+  }
+
+  return scene;
 }
