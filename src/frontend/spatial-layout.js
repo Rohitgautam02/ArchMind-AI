@@ -155,6 +155,123 @@ export function computeTopology(nodes, edges) {
   return results;
 }
 
+export function compute3DTopology(nodes, edges) {
+  const n = nodes.length;
+  if (n === 0) return [];
+  if (n === 1) return [{ id: nodes[0].id, x: 0, y: 0, z: 0, depth: 0, degree: 0 }];
+
+  const adjacency = new Map();
+  nodes.forEach(node => adjacency.set(node.id, []));
+  edges.forEach(edge => {
+    if (adjacency.has(edge.from) && adjacency.has(edge.to)) {
+      adjacency.get(edge.from).push(edge.to);
+      adjacency.get(edge.to).push(edge.from);
+    }
+  });
+
+  for (const neighbors of adjacency.values()) {
+    neighbors.sort((a, b) => a.localeCompare(b));
+  }
+
+  const visited = new Set();
+  const components = [];
+  const sortedNodes = [...nodes].sort((a, b) => a.id.localeCompare(b.id));
+
+  for (const node of sortedNodes) {
+    if (!visited.has(node.id)) {
+      const comp = [];
+      const queue = [node.id];
+      visited.add(node.id);
+
+      while (queue.length > 0) {
+        const curr = queue.shift();
+        comp.push(curr);
+        for (const neighbor of adjacency.get(curr)) {
+          if (!visited.has(neighbor)) {
+            visited.add(neighbor);
+            queue.push(neighbor);
+          }
+        }
+      }
+      components.push(comp);
+    }
+  }
+
+  components.sort((a, b) => {
+     if (b.length !== a.length) return b.length - a.length;
+     return a[0].localeCompare(b[0]);
+  });
+
+  const results = [];
+
+  components.forEach((comp, compIndex) => {
+     let cx = 0, cy = 0, cz = 0;
+     if (compIndex > 0) {
+        const ringRadius = 15 + compIndex * 4;
+        const angle = compIndex * 2.39996;
+        cx = Math.cos(angle) * ringRadius;
+        cz = Math.sin(angle) * ringRadius;
+        cy = -5 - compIndex;
+     }
+
+     let maxDegree = -1;
+     let root = comp[0];
+     for (const id of comp) {
+         const deg = adjacency.get(id).length;
+         if (deg > maxDegree || (deg === maxDegree && id.localeCompare(root) < 0)) {
+             maxDegree = deg;
+             root = id;
+         }
+     }
+
+     const depthMap = new Map();
+     const layers = [];
+     const q = [root];
+     depthMap.set(root, 0);
+     layers[0] = [root];
+
+     while(q.length > 0) {
+         const curr = q.shift();
+         const d = depthMap.get(curr);
+
+         for (const neighbor of adjacency.get(curr)) {
+             if (!depthMap.has(neighbor)) {
+                 depthMap.set(neighbor, d + 1);
+                 if (!layers[d + 1]) layers[d + 1] = [];
+                 layers[d + 1].push(neighbor);
+                 q.push(neighbor);
+             }
+         }
+     }
+
+     for (let d = 0; d < layers.length; d++) {
+         const layerNodes = layers[d];
+         if (d === 0) {
+             results.push({ id: layerNodes[0], x: cx, y: cy, z: cz, depth: 0, degree: adjacency.get(layerNodes[0]).length });
+         } else {
+             layerNodes.sort((a, b) => stableHash(a) - stableHash(b));
+             const r = d * 5 + (layerNodes.length * 0.2);
+             const count = layerNodes.length;
+             const angleOffset = (stableHash(root) % 360) * (Math.PI / 180);
+             
+             for (let i = 0; i < count; i++) {
+                 const angle = angleOffset + (i / count) * Math.PI * 2;
+                 results.push({
+                     id: layerNodes[i],
+                     x: cx + Math.cos(angle) * r,
+                     y: cy - d * 4,
+                     z: cz + Math.sin(angle) * r,
+                     depth: d,
+                     degree: adjacency.get(layerNodes[i]).length
+                 });
+             }
+         }
+     }
+  });
+
+  return results;
+}
+
 export function makeRealLayoutStages(nodes, topology) {
   const stages = [[], [], [], []];
   const n = nodes.length;
@@ -258,10 +375,12 @@ export function buildSceneDescription(nodes, edges, isReal, proceduralCount = 58
   if (isReal) {
     const topo = computeTopology(nodes, edges);
     const stages = makeRealLayoutStages(nodes, topo);
+    const topo3D = compute3DTopology(nodes, edges);
 
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       const kindGroup = stages[0][i].kindGroup;
+      const t3 = topo3D.find(t => t.id === node.id) || { x: 0, y: 0, z: 0 };
 
       scene.nodes.push({
         id: node.id,
@@ -270,6 +389,7 @@ export function buildSceneDescription(nodes, edges, isReal, proceduralCount = 58
         signalStrength: (node.confidence && node.confidence.score !== undefined) ? node.confidence.score : 0,
         orbitCount: (node.provenance && node.provenance.length > 0) ? node.provenance.length : 0,
         isEmphasized: false,
+        spatialPosition: { x: t3.x, y: t3.y, z: t3.z },
         stages: [
           { x: stages[0][i].x, y: stages[0][i].y, scale: stages[0][i].scale, opacity: stages[0][i].opacity, zDepth: stages[0][i].zDepth },
           { x: stages[1][i].x, y: stages[1][i].y, scale: stages[1][i].scale, opacity: stages[1][i].opacity, zDepth: stages[1][i].zDepth },
@@ -281,7 +401,7 @@ export function buildSceneDescription(nodes, edges, isReal, proceduralCount = 58
 
     for (const edge of edges) {
       scene.edges.push({
-        id: edge.id || ${edge.from}-,
+        id: edge.id || `${edge.from}-${edge.to}`,
         sourceId: edge.from,
         targetId: edge.to,
         signalStrength: (edge.confidence && edge.confidence.score !== undefined) ? edge.confidence.score : 1
@@ -297,12 +417,13 @@ export function buildSceneDescription(nodes, edges, isReal, proceduralCount = 58
 
     for (let i = 0; i < proceduralCount; i++) {
       scene.nodes.push({
-        id: proc-,
+        id: `proc-${i}`,
         label: '',
         visualTier: 'mid',
         signalStrength: 0,
         orbitCount: 0,
         isEmphasized: false,
+        spatialPosition: { x: 0, y: 0, z: 0 },
         stages: [
           { x: stages[0][i].x, y: stages[0][i].y, scale: stages[0][i].scale, opacity: stages[0][i].opacity, zDepth: 0 },
           { x: stages[1][i].x, y: stages[1][i].y, scale: stages[1][i].scale, opacity: stages[1][i].opacity, zDepth: 0 },
