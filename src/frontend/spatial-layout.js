@@ -423,7 +423,7 @@ export function buildSceneDescription(nodes, edges, isReal, proceduralCount = 58
         signalStrength: 0,
         orbitCount: 0,
         isEmphasized: false,
-        spatialPosition: { x: 0, y: 0, z: 0 },
+        spatialPosition: { x: (stages[0][i].x - 0.5) * 40, y: (0.5 - stages[0][i].y) * 40, z: (i % 3) * -5 },
         stages: [
           { x: stages[0][i].x, y: stages[0][i].y, scale: stages[0][i].scale, opacity: stages[0][i].opacity, zDepth: 0 },
           { x: stages[1][i].x, y: stages[1][i].y, scale: stages[1][i].scale, opacity: stages[1][i].opacity, zDepth: 0 },

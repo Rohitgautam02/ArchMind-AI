@@ -48,7 +48,9 @@ function extractRunId(url, prefix) {
 
 const server = createServer(async (request, response) => {
   try {
-    const url = request.url || '/';
+    const parsedUrl = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`);
+    const url = parsedUrl.pathname;
+
 
     // --- Static routes ---
 
