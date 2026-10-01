@@ -72,7 +72,8 @@ export class Renderer3D {
       this.sharedGeometries = {
         sphere: Object.assign(new THREE.SphereGeometry(1, 32, 32), { isShared: true }),
         box: Object.assign(new THREE.BoxGeometry(1.5, 1.5, 1.5), { isShared: true }),
-        diamond: Object.assign(new THREE.OctahedronGeometry(1.2, 0), { isShared: true })
+        diamond: Object.assign(new THREE.OctahedronGeometry(1.2, 0), { isShared: true }),
+        ring: Object.assign(new THREE.RingGeometry(1.0, 1.05, 32), { isShared: true })
       };
     }
     
@@ -119,15 +120,24 @@ export class Renderer3D {
       this.nodeGroup.add(mesh);
       this.nodeMeshes.set(node.id, mesh);
 
-      if (node.orbitCount > 0) {
-         const orbitGeo = new THREE.RingGeometry(scale * 1.5, scale * 1.6, 32);
-         const orbitMat = new THREE.MeshBasicMaterial({ color: 0x8de4e2, side: THREE.DoubleSide, transparent: true, opacity: 0.3 });
-         const orbit = new THREE.Mesh(orbitGeo, orbitMat);
-         orbit.userData = { nodeId: node.id, speed: 1.0 };
-         if (node.spatialPosition) {
-           orbit.position.set(node.spatialPosition.x, node.spatialPosition.y, node.spatialPosition.z);
+      // Render capped provenance rings (max 3)
+      if (node.visualSignals && node.visualSignals.provenanceCount > 0) {
+         const count = Math.min(3, node.visualSignals.provenanceCount);
+         const isExt = node.visualSignals.hasExternalProvenance;
+         const orbitColor = isExt ? 0xf39c12 : 0x8de4e2; // Distinguish external provenance
+         const orbitOpacity = isExt ? 0.4 : 0.2;
+         
+         for(let i=0; i<count; i++) {
+           const rad = scale * 1.5 + (i * scale * 0.4);
+           const orbitMat = new THREE.MeshBasicMaterial({ color: orbitColor, side: THREE.DoubleSide, transparent: true, opacity: orbitOpacity });
+           const orbit = new THREE.Mesh(this.sharedGeometries.ring, orbitMat);
+           orbit.scale.set(rad, rad, rad);
+           orbit.userData = { nodeId: node.id, speed: 1.0 + (i * 0.2) };
+           if (node.spatialPosition) {
+             orbit.position.set(node.spatialPosition.x, node.spatialPosition.y, node.spatialPosition.z);
+           }
+           this.orbitGroup.add(orbit);
          }
-         this.orbitGroup.add(orbit);
       }
     }
 

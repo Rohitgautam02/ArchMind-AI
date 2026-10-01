@@ -377,7 +377,8 @@ export function buildSceneDescription(nodes, edges, isReal, proceduralCount = 58
   const scene = {
     isReal,
     nodes: [],
-    edges: []
+    edges: [],
+    anchors: []
   };
 
   if (isReal) {
@@ -414,6 +415,38 @@ export function buildSceneDescription(nodes, edges, isReal, proceduralCount = 58
         targetId: edge.to,
         signalStrength: (edge.confidence && edge.confidence.score !== undefined) ? edge.confidence.score : 1
       });
+    }
+  
+    const posMap = new Map();
+    for (const n of scene.nodes) posMap.set(n.id, n.spatialPosition);
+    for (const e of scene.edges) {
+      const sPos = posMap.get(e.sourceId);
+      const tPos = posMap.get(e.targetId);
+      if (sPos && tPos) {
+        posMap.set(e.id, { x: (sPos.x + tPos.x)/2, y: (sPos.y + tPos.y)/2, z: (sPos.z + tPos.z)/2 });
+      }
+    }
+    for (const obj of [...nodes, ...edges]) {
+      if (obj.provenance && obj.provenance.length > 0) {
+        const oId = obj.id || (obj.from && obj.to ? `${obj.from}-${obj.to}` : null);
+        const sPos = posMap.get(oId);
+        if (!sPos) continue;
+        for (const p of obj.provenance) {
+          if (p.supportingEvidenceIds && p.supportingEvidenceIds.length > 0) {
+            for (const tgtId of p.supportingEvidenceIds) {
+              const tPos = posMap.get(tgtId);
+              if (tPos) {
+                scene.anchors.push({
+                  id: `anchor-${oId}-${tgtId}`,
+                  sourcePos: sPos,
+                  targetPos: tPos,
+                  isExternal: !!p.external
+                });
+              }
+            }
+          }
+        }
+      }
     }
   } else {
     const stages = [
