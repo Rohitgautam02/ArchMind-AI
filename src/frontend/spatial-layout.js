@@ -1,3 +1,11 @@
+
+function determineGeometryType(kind) {
+  if (!kind) return 'sphere';
+  const k = kind.toLowerCase();
+  if (k.includes('repository') || k.includes('package') || k.includes('docker') || k.includes('readme') || k.includes('tsconfig')) return 'box';
+  if (k.includes('framework') || k.includes('architecture') || k.includes('moduleboundary') || k.includes('language')) return 'diamond';
+  return 'sphere';
+}
 function stableHash(str) {
   let hash = 5381;
   for (let i = 0; i < str.length; i++) {

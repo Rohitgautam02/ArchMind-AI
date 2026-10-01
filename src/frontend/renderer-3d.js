@@ -5,7 +5,7 @@ function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 
 function disposeGroup(group) {
   group.children.forEach(child => {
-    if (child.geometry) child.geometry.dispose();
+    if (child.geometry && !child.geometry.isShared) child.geometry.dispose();
     if (child.material) {
       if (Array.isArray(child.material)) {
         child.material.forEach(m => m.dispose());
@@ -68,9 +68,18 @@ export class Renderer3D {
 
     if (!sceneData || !sceneData.nodes) return;
 
-    const geometry = new THREE.SphereGeometry(1, 32, 32);
+    if (!this.sharedGeometries) {
+      this.sharedGeometries = {
+        sphere: Object.assign(new THREE.SphereGeometry(1, 32, 32), { isShared: true }),
+        box: Object.assign(new THREE.BoxGeometry(1.5, 1.5, 1.5), { isShared: true }),
+        diamond: Object.assign(new THREE.OctahedronGeometry(1.2, 0), { isShared: true })
+      };
+    }
     
     for (const node of sceneData.nodes) {
+      const type = (node.visualSignals && node.visualSignals.geometryType) ? node.visualSignals.geometryType : 'sphere';
+      const geometry = this.sharedGeometries[type] || this.sharedGeometries.sphere;
+      
       let color = 0x8de4e2;
       let opacity = 0.8;
       
@@ -82,7 +91,13 @@ export class Renderer3D {
         opacity = 1.0;
       }
 
-      const emissive = new THREE.Color(color).multiplyScalar(node.signalStrength || 0);
+      const signal = (node.visualSignals && node.visualSignals.signalStrength !== undefined)
+        ? node.visualSignals.signalStrength
+        : (node.signalStrength || 0);
+
+      // Map confidence (signal) to visual intensity via opacity and emissive brightness
+      opacity = opacity * (0.4 + signal * 0.6);
+      const emissive = new THREE.Color(color).multiplyScalar(signal);
 
       const material = new THREE.MeshLambertMaterial({ 
         color, 
